@@ -1,0 +1,29 @@
+_target_: src.models.audioslot_module.AudioSlotModule
+
+name: "audio_slot"
+
+optimizer:
+  _target_: torch.optim.Adam
+  _partial_: true
+  lr: 0.0002
+
+scheduler:
+  scheduler:
+    _target_: torch.optim.lr_scheduler.CosineAnnealingWarmRestarts
+    _partial_: true
+  T_0: 2500
+
+
+net:
+  _target_: src.models.components.audioSlots.audioslot.AudioSlot
+  # num_slots: 7
+  # num_iterations: 3
+  # num_attn_heads: 1
+  # slot_dim: 64
+  # hid_dim: 64
+  # mlp_hid_dim: 128
+  # eps: 1e-8
+  # enc_depth: 4
+  # dec_init_size: 8
+  # dec_depth: 6
+  # dec_hid_dim: 64

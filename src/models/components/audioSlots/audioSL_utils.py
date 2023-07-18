@@ -52,8 +52,8 @@ class SoftPositionEmbed(nn.Module):
         self.grid = self.build_grid(resolution)
 
     def forward(self, inputs):
-        self.grid = self.grid.to(inputs.device)
-        grid = self.embedding(self.grid).to(inputs.device)
+        self.grid = self.grid
+        grid = self.embedding(self.grid)
         return inputs + grid
 
     def build_grid(self, resolution):

@@ -1,0 +1,8 @@
+_target_: src.data.libri2mix_datamodule.Libri2MixDataModule
+name: "libri2mix"
+train_metadata_path: /workspace/data/Libri2Mix/wav16k/max/metadata/mixture_train-360_mix_clean.csv
+test_metadata_path: /workspace/data/Libri2Mix/wav16k/max/metadata/mixture_test_mix_clean.csv
+crop_size: 8000
+batch_size: 64
+num_workers: 4
+pin_memory: False

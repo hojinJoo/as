@@ -6,12 +6,12 @@ import torchvision
 from torchvision.models import ResNet
 from torchvision.models.resnet import BasicBlock, Bottleneck
 
-sample_wav = torch.randn(8000)
-after_stft = torch.stft(sample_wav, n_fft=512, win_length=512,
-                        hop_length=125, return_complex=True)
-after_stft = torch.abs(after_stft)
-input(after_stft.size())
-sample = after_stft.unsqueeze(0).repeat((64, 1, 1, 1))
+# sample_wav = torch.randn(8000)
+# after_stft = torch.stft(sample_wav, n_fft=512, win_length=512,
+#                         hop_length=125, return_complex=True)
+# after_stft = torch.abs(after_stft)
+# input(after_stft.size())
+# sample = after_stft.unsqueeze(0).repeat((64, 1, 1, 1))
 
 
 class CustomResnet(ResNet):
@@ -32,22 +32,22 @@ class CustomResnet(ResNet):
         x = self.maxpool(x)
 
         x = self.layer1(x)
-        print(x.size())
         x = self.layer2(x)
-        print(x.size())
         x = self.layer3(x)
-        print(x.size())
         x = self.layer4(x)
 
         return x
 
 
-resnet34 = CustomResnet(BasicBlock, [3, 4, 6, 3])
-print(resnet34)
-# tmp = torch.rand(64, 256, 8, 8)
-# maxpool = nn.MaxPool2d(kernel_size=3, stride=1,
-#                        padding=1, dilation=1, ceil_mode=False)
-print(resnet34(sample).size())
+def build_resnet() :
+    return CustomResnet(BasicBlock, [3, 4, 6, 3])
+
+# resnet34 = CustomResnet(BasicBlock, [3, 4, 6, 3])
+# print(resnet34)
+# # tmp = torch.rand(64, 256, 8, 8)
+# # maxpool = nn.MaxPool2d(kernel_size=3, stride=1,
+# #                        padding=1, dilation=1, ceil_mode=False)
+# print(resnet34(sample).size())
 # conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2,
 #   padding=2, bias=False)
 # print(conv1(sample).size())

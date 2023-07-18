@@ -4,7 +4,7 @@
 # order of defaults determines the order in which configs override each other
 defaults:
   - _self_
-  - data: mnist.yaml
+  - data: libri2mix.yaml
   - model: mnist.yaml
   - callbacks: default.yaml
   - logger: wandb.yaml # set logger here or use command line (e.g. `python train.py logger=tensorboard`)
@@ -35,6 +35,7 @@ run_name: "${data.name}_${model.name}"
 
 # timestamp of run, to prevent redundant use of ${now}
 timestamp: "${now:%Y-%m-%d}_${now:%H-%M-%S}"
+
 
 # tags to help you identify your experiments
 # you can overwrite this in experiment configs

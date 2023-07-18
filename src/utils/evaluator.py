@@ -2,6 +2,33 @@ import numpy as np
 import torch
 from scipy.optimize import linear_sum_assignment
 from scipy.special import comb
+from torchmetrics import ScaleInvariantSignalNoiseRatio
+
+class SISNREvaluator :
+    def __init__(self) :
+        self.SI_SNR = []
+        self.metric = ScaleInvariantSignalNoiseRatio()
+    def evaluate(self,pred,gt) :
+        """_summary_
+
+        Arguments:
+            pred -- (B,2,F,T)
+            gt -- (B,2,F,T)
+
+        Returns:
+            (SI_SNR)
+        """
+        self.metric.to(pred.device)
+        self.SI_SNR.append(self.metric(pred,gt))
+        pass
+    def reset(self) :
+        self.SI_SNR = []
+    
+    def get_results(self) :
+        self.SI_SNR = [i.cpu() for i in self.SI_SNR]
+        return np.mean(self.SI_SNR) if self.SI_SNR != [] else 0
+        
+        
 
 
 class ARIEvaluator:

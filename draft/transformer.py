@@ -101,7 +101,7 @@ class DETR(nn.Module):
         # hs = tuple(decoder 결과 : Size([6, 100, 2, 256]), encoder 결과 : torch.Size([2, 256, 28, 38]))[0]
         print(hs[0].size(), hs[1].size())
         print(hs[0][-1].size())
-        return hs
+        return hs[0][-1]
 
     @torch.jit.unused
     def _set_aux_loss(self, outputs_class, outputs_coord):
@@ -441,7 +441,7 @@ def build() :
         backbone=None,
         transformer=transformer,
         num_classes=num_classes,
-        num_queries=4,
+        num_queries=10,
         aux_loss=False,
     )
     
