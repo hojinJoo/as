@@ -1,13 +1,16 @@
 from typing import Any, List
 
 import torch
+import wandb
 import numpy as np
 from pytorch_lightning import LightningModule
 from torchmetrics import MaxMetric, MeanMetric
 from torchmetrics.classification.accuracy import Accuracy
 from scipy.optimize import linear_sum_assignment
+import os
 
 from utils.evaluator import SISNREvaluator
+from src.utils.audio_vis import vis_compare,vis_slots
 
 
 class AudioSlotModule(LightningModule):
@@ -102,7 +105,6 @@ class AudioSlotModule(LightningModule):
         source1 = batch["source_1"]
         source2 = batch["source_2"]
         gt = torch.stack((source1, source2), dim=1)
-        
         B,n_src,F,T = gt.size()
         # input(mixture.size())
         pred = self.forward(mixture) # B,4,F,T
@@ -115,10 +117,13 @@ class AudioSlotModule(LightningModule):
         matching_pred = pred[pred_idx].view(B,n_src,F,T).type(torch.float32)
         matching_gt = gt[gt_idx].view(B,n_src,F,T)
         
-        loss = self.criterion( matching_gt,matching_pred)
-        imgs = {"gt" : matching_pred, "pred" : matching_gt}
         
-        return loss,imgs
+
+        
+        loss = self.criterion( matching_gt,matching_pred)
+        imgs = {"gt" : matching_gt, "pred" : matching_pred}
+        
+        return loss,imgs,pred
     
     def _get_src_permutation_idx(self, indices):
         # permute predictions following indices
@@ -133,14 +138,23 @@ class AudioSlotModule(LightningModule):
         return batch_idx, tgt_idx
     
     def training_step(self, batch: Any, batch_idx: int):
-        loss, imgs = self.model_step(batch)
-
+        loss, imgs,slots = self.model_step(batch)
+        
         # update and log metrics
         self.train_loss(loss)
         # self.train_snr(imgs["gt"],imgs['pred'])
         self.log("train/loss", self.train_loss, on_step=False, on_epoch=True, prog_bar=True)
         # self.log("train/snr", self.train_snr, on_step=False, on_epoch=True, prog_bar=True)
+        if batch_idx == 0:
+            vis_compare(imgs["gt"],imgs['pred'],self.logger.save_dir)
+            vis_slots(slots,self.logger.save_dir)
 
+            
+            gt_img = [wandb.Image(os.path.join(self.logger.save_dir,'gt_with_preds.png'), caption=f"Epoch : {self.current_epoch+1} GT and preds")]
+            slots_img = [wandb.Image(os.path.join(self.logger.save_dir,'slots.png'),caption=f"Epoch : {self.current_epoch+1} slots")]
+
+            self.logger.log_image(key="GT and preds", images=gt_img)
+            self.logger.log_image(key="slots", images=slots_img)
         # we can return here dict with any tensors
         # and then read it in some callback or in `training_epoch_end()` below
         # remember to always return loss from `training_step()` or backpropagation will fail!
@@ -159,7 +173,7 @@ class AudioSlotModule(LightningModule):
         pass
 
     def validation_step(self, batch: Any, batch_idx: int):
-        loss, imgs = self.model_step(batch)
+        loss, imgs,slots = self.model_step(batch)
 
         # update and log metrics
         self.val_loss(loss)

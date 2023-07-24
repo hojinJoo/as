@@ -6,13 +6,16 @@
 defaults:
   - override /data: libri2mix.yaml
   - override /model: audioslot.yaml
-  - override /callbacks: default.yaml
+  - override /callbacks: audioslot.yaml
   - override /trainer: ddp.yaml
 
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
 
 tags: ["audio_slot", "libri2mix"]
+
+
+ 
 
 seed: 12345
 
@@ -37,6 +40,3 @@ logger:
     tags: ${tags}
     group: "audio_slot"
 
-callbacks:
-  filename: epoch={epoch:03d}_train_loss={train/loss:.4f}
-  monitor: train/loss

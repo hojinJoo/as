@@ -122,12 +122,12 @@ hydra:
     - hydra.job.name=train_ddp_process_1
     - hydra.mode=RUN
     task:
+    - timestamp=vis_re_re
     - experiment=audioslot.yaml
-    - timestamp=plz
   job:
     name: train_ddp_process_1
     chdir: null
-    override_dirname: experiment=audioslot.yaml,timestamp=plz
+    override_dirname: experiment=audioslot.yaml,timestamp=vis_re_re
     id: ???
     num: ???
     config_name: train.yaml
@@ -166,7 +166,7 @@ hydra:
       paths: default.yaml
       trainer: ddp.yaml
       logger: wandb.yaml
-      callbacks: default.yaml
+      callbacks: audioslot.yaml
       model: audioslot.yaml
       data: libri2mix.yaml
       hydra/env: default

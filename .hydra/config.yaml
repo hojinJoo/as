@@ -1,6 +1,6 @@
 task_name: train
 run_name: ${data.name}_${model.name}
-timestamp: plz
+timestamp: vis_re_re
 tags:
 - audio_slot
 - libri2mix
@@ -35,18 +35,30 @@ callbacks:
   model_checkpoint:
     _target_: pytorch_lightning.callbacks.ModelCheckpoint
     dirpath: ${paths.output_dir}/checkpoints
-    filename: epoch={epoch:03d}_val_ari={val/ari:.4f}
-    monitor: val/ari
+    filename: epoch={epoch:03d}_train_loss={train/loss:.4f}
+    monitor: train/loss
     verbose: false
     save_last: true
     save_top_k: 3
-    mode: max
+    mode: min
     auto_insert_metric_name: false
     save_weights_only: false
     every_n_train_steps: null
     train_time_interval: null
     every_n_epochs: null
     save_on_train_epoch_end: true
+  early_stopping:
+    _target_: pytorch_lightning.callbacks.EarlyStopping
+    monitor: val/loss
+    min_delta: 0.0
+    patience: 3
+    verbose: false
+    mode: max
+    strict: true
+    check_finite: true
+    stopping_threshold: null
+    divergence_threshold: null
+    check_on_train_epoch_end: null
   model_summary:
     _target_: pytorch_lightning.callbacks.RichModelSummary
     max_depth: -1
@@ -55,8 +67,6 @@ callbacks:
   learning_rate_monitor:
     _target_: pytorch_lightning.callbacks.LearningRateMonitor
     logging_interval: epoch
-  filename: epoch={epoch:03d}_train_loss={train/loss:.4f}
-  monitor: train/loss
 logger:
   wandb:
     _target_: pytorch_lightning.loggers.wandb.WandbLogger
