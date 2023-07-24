@@ -1,10 +1,10 @@
 import pandas as pd
 
-PATH = "/media/Libri2Mix/mixture_train-360_mix_clean.csv"
-out = "/media/Libri2Mix/mixture_train-360_mix_clean_metadata.csv"
+PATH = "/media/Libri2Mix/mixture_test_mix_clean.csv"
+out = "/media/Libri2Mix/mixture_test_mix_clean_metadata.csv"
 
 
-prefix = "/media/Libri2Mix/train-360/"
+prefix = "/media/Libri2Mix/test/"
 
 df = pd.read_csv(PATH)
 for col in ["mixture_path", "source_1_path", "source_2_path"]:

@@ -36,8 +36,8 @@ class Libri2MixDataModule(LightningDataModule):
     def __init__(
         self,
         name: str = "libri2mix",
-        train_metadata_path: str = "/workspace/data/Libri2Mix/wav16k/max/metadata/mixture_train-360_mix_clean.csv",
-        test_metadata_path: str = "/workspace/data/Libri2Mix/wav16k/max/metadata/mixture_test_mix_clean.csv",
+        train_metadata_path: str = "/media/Libri2Mix/mixture_train-360_mix_clean_metadata.csv",
+        test_metadata_path: str = "/media/Libri2Mix/mixture_test_mix_clean_metadata.csv",
         crop_size: int = 8000,
         batch_size: int = 64,
         num_workers: int = 0,
