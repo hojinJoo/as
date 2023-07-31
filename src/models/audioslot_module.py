@@ -1,7 +1,6 @@
 from typing import Any, List
 
 import torch
-import wandb
 import numpy as np
 from pytorch_lightning import LightningModule
 from torchmetrics import MaxMetric, MeanMetric
@@ -36,7 +35,6 @@ class AudioSlotModule(LightningModule):
         name: str = "audioslot"
     ):
         super().__init__()
-
         # this line allows to access init params with 'self.hparams' attribute
         # also ensures init params will be stored in ckpt
         self.save_hyperparameters(logger=False)
@@ -139,27 +137,32 @@ class AudioSlotModule(LightningModule):
     
     def training_step(self, batch: Any, batch_idx: int):
         loss, imgs,slots = self.model_step(batch)
-        
         # update and log metrics
         self.train_loss(loss)
-        # self.train_snr(imgs["gt"],imgs['pred'])
+
         self.log("train/loss", self.train_loss, on_step=False, on_epoch=True, prog_bar=True)
-        # self.log("train/snr", self.train_snr, on_step=False, on_epoch=True, prog_bar=True)
-        if batch_idx == 0:
-            vis_compare(imgs["gt"],imgs['pred'],self.logger.save_dir)
-            vis_slots(slots,self.logger.save_dir)
 
+        if batch_idx == 0 and self.global_rank == 0:
+            # with torch.no_grad():
             
-            gt_img = [wandb.Image(os.path.join(self.logger.save_dir,'gt_with_preds.png'), caption=f"Epoch : {self.current_epoch+1} GT and preds")]
-            slots_img = [wandb.Image(os.path.join(self.logger.save_dir,'slots.png'),caption=f"Epoch : {self.current_epoch+1} slots")]
+            
+            
+            vis_compare(imgs["gt"],imgs['pred'],self.logger.save_dir,str(self.global_rank))
+            vis_slots(slots,self.logger.save_dir,str(self.global_rank))
+            
+            # gt_img = [wandb.Image(os.path.join(self.logger.save_dir,f'gt_with_preds.png'), caption=f"Epoch : {self.current_epoch+1} GT and preds rank : {gpu}")]
+            # slots_img = [wandb.Image(os.path.join(self.logger.save_dir,f'slots.png'),caption=f"Epoch : {self.current_epoch+1} slots rank : {gpu}")]
+            print(self.logger.remote_dir)
+            gt_img = [os.path.join(self.logger.save_dir,f'gt_with_preds.png')]
+            slots_img = [os.path.join(self.logger.save_dir,f'slots.png')]
 
-            self.logger.log_image(key="GT and preds", images=gt_img)
-            self.logger.log_image(key="slots", images=slots_img)
+            self.logger.log_image(key="GT and preds", images=gt_img,caption=[f"Epoch : {self.current_epoch+1} GT and preds"])
+            self.logger.log_image(key="slots", images=slots_img,caption=[f"Epoch : {self.current_epoch+1} slots "])
         # we can return here dict with any tensors
         # and then read it in some callback or in `training_epoch_end()` below
         # remember to always return loss from `training_step()` or backpropagation will fail!
         return {"loss": loss}
-
+    
     def training_epoch_end(self, outputs: List[Any]):
         # `outputs` is a list of dicts returned from `training_step()`
 
@@ -169,9 +172,42 @@ class AudioSlotModule(LightningModule):
 
         # consider detaching tensors before returning them from `training_step()`
         # or using `on_train_epoch_end()` instead which doesn't accumulate outputs
-
         pass
+    # def on_train_epoch_end(self):
+    #     # 이거 해보기
+    #     # if self.global_rank == 0:
+    #     #     gt_img = [wandb.Image(os.path.join(self.logger.save_dir,f'gt_with_preds_{str(self.global_rank)}.png'), caption=f"Epoch : {self.current_epoch+1} GT and preds rank : {self.global_rank}")]
+    #     #     slots_img = [wandb.Image(os.path.join(self.logger.save_dir,f'slots_{str(self.global_rank)}.png'),caption=f"Epoch : {self.current_epoch+1} slots rank : {self.global_rank}")]
+            
+    #     #     try : 
+    #     #         self.logger.log_image(key="GT and preds", images=gt_img)
+    #     #         self.logger.log_image(key="slots", images=slots_img)
+    #     #     except Exception as e:
+    #     #         print(e)
+    #     #     pass
+    #     num_gpus = os.environ["NVIDIA_VISIBLE_DEVICES"]
+    #     for i in range(len(num_gpus.split(","))):
+            
+    #         gt_img = [wandb.Image(os.path.join(self.logger.save_dir,f'gt_with_preds_{str(i)}.png'), caption=f"Epoch : {self.current_epoch+1} GT and preds rank : {i}")]
+    #         slots_img = [wandb.Image(os.path.join(self.logger.save_dir,f'slots_{str(i)}.png'),caption=f"Epoch : {self.current_epoch+1} slots rank : {i}")]
+            
+    #         try : 
+    #             self.logger.log_image(key="GT and preds", images=gt_img)
+    #             self.logger.log_image(key="slots", images=slots_img)
+    #         except Exception as e:
+    #             print(e)
+    #         pass
+    def on_training_epoch_end(self):
+        print("TRAINIGN ONE EPOCH END")
+        print(self.global_rank)            
+        gt_img = [os.path.join(self.logger.save_dir,f'gt_with_preds.png')]
+        slots_img = [os.path.join(self.logger.save_dir,f'slots.png')]
+        self.logger.log_image(key="GT and preds", images=gt_img,caption=[f"Epoch : {self.current_epoch+1} GT and preds"])
+        self.logger.log_image(key="slots", images=slots_img,caption=[f"Epoch : {self.current_epoch+1} slots "])
+                
 
+        
+        
     def validation_step(self, batch: Any, batch_idx: int):
         loss, imgs,slots = self.model_step(batch)
 

@@ -107,7 +107,7 @@ class LitSlotAttentionAutoEncoder(LightningModule):
         self.val_fg_ari.evaluate(outputs["masks"].squeeze(-1), batch["masks"][:, 1:].squeeze(-1))
         self.val_ari.evaluate(outputs["masks"].squeeze(-1), batch["masks"].squeeze(-1))
         self.val_miou.evaluate(outputs["masks"].squeeze(-1), batch["masks"].squeeze(-1))
-
+            
         if batch_idx == 0:
             n_sampels = 4
             wandb_img_list = list()

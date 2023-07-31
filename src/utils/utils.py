@@ -210,5 +210,6 @@ def close_loggers() -> None:
 @rank_zero_only
 def save_file(path: str, content: str) -> None:
     """Save file in rank zero mode (only on one process in multi-GPU setup)."""
+    print(f"Saving file <{path}> <content={content}>")
     with open(path, "w+") as file:
         file.write(content)

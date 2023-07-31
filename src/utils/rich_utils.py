@@ -68,7 +68,6 @@ def print_config_tree(
 
     # print config tree
     rich.print(tree)
-
     # save config tree to file
     if save_to_file:
         with open(Path(cfg.paths.output_dir, "config_tree.log"), "w") as file:
