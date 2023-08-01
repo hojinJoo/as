@@ -9,9 +9,10 @@ optimizer:
 
 scheduler:
   scheduler:
-    _target_: torch.optim.lr_scheduler.CosineAnnealingWarmRestarts
+    _target_: torch.optim.lr_scheduler.CosineAnnealingLR
     _partial_: true
-  T_0: 2500
+  warmup_steps: 2500
+  T_max: 2500
 
 
 net:

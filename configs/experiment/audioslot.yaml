@@ -7,7 +7,7 @@ defaults:
   - override /data: libri2mix.yaml
   - override /model: audioslot.yaml
   - override /callbacks: audioslot.yaml
-  - override /trainer: ddp.yaml
+  - override /trainer: ddp_spawn.yaml
 
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
@@ -17,7 +17,7 @@ tags: ["audio_slot", "libri2mix"]
 
  
 
-seed: 12345
+seed: null
 
 trainer:
   min_epochs: 10
@@ -33,10 +33,15 @@ model:
   #   lin3_size: 64
 
 data:
-  batch_size: 12
+  batch_size: 48
 
 logger:
   wandb:
     tags: ${tags}
     group: "audio_slot"
 
+hydra :
+  job_logging :
+    handlers:
+      file:
+        filename: ${paths.output_dir}/${hydra.job.name}.log
