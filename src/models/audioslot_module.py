@@ -7,9 +7,11 @@ from torchmetrics import MaxMetric, MeanMetric
 from torchmetrics.classification.accuracy import Accuracy
 from scipy.optimize import linear_sum_assignment
 import os
+import wandb
+from pytorch_lightning.utilities import rank_zero_only
 
 from utils.evaluator import SISNREvaluator
-from src.utils.audio_vis import vis_compare,vis_slots
+from src.utils.audio_vis import vis_compare,vis_slots,vis_attention
 
 
 class AudioSlotModule(LightningModule):
@@ -38,7 +40,8 @@ class AudioSlotModule(LightningModule):
         # this line allows to access init params with 'self.hparams' attribute
         # also ensures init params will be stored in ckpt
         self.save_hyperparameters(logger=False)
-
+        
+        
         self.net = net
 
         # loss function
@@ -87,8 +90,8 @@ class AudioSlotModule(LightningModule):
         
         
         
-    def forward(self, x: torch.Tensor):
-        return self.net(x)
+    def forward(self, x: torch.Tensor,train:bool=False):
+        return self.net(x,train=train)
 
     def on_train_start(self):
         # by default lightning executes validation step sanity checks before training starts,
@@ -97,15 +100,15 @@ class AudioSlotModule(LightningModule):
         self.val_snr.reset()
         self.val_snr_best.reset()
 
-    def model_step(self, batch: Any):
+    def model_step(self, batch: Any,train:bool=False):
         
         mixture = batch["mixture"]
         source1 = batch["source_1"]
         source2 = batch["source_2"]
         gt = torch.stack((source1, source2), dim=1)
         B,n_src,F,T = gt.size()
-        # input(mixture.size())
-        pred = self.forward(mixture) # B,4,F,T
+
+        pred,attention = self.forward(mixture,train=train) # B,7,F,T
         
         indices = self.matcher(gt, pred)
         
@@ -114,14 +117,20 @@ class AudioSlotModule(LightningModule):
         
         matching_pred = pred[pred_idx].view(B,n_src,F,T).type(torch.float32)
         matching_gt = gt[gt_idx].view(B,n_src,F,T)
+        # print(f"train : {train} prediction {matching_pred.requires_grad}")
         
+        # print(f"preidx size : {pred_idx}")
+        # print(f"pred idx : {pred_idx[0]}")
+        # print(f"gt idx : {gt_idx[0]}")
+        # print(f"prediction max : {matching_pred.max()} min : {matching_pred.min()} mean : {matching_pred.mean()} std : {matching_pred.std()} median : {matching_pred.median()} percent over average : {100*((matching_pred > matching_pred.mean()).sum())/matching_pred.numel()}")
+        # print(f"gt max : {matching_gt.max()} min : {matching_gt.min()} mean : {matching_gt.mean()} std : {matching_gt.std()} median : {matching_gt.median()} percent over average : { 100*((matching_gt > matching_gt.mean()).sum())/matching_gt.numel()}")
         
-
         
         loss = self.criterion( matching_gt,matching_pred)
-        imgs = {"gt" : matching_gt, "pred" : matching_pred}
         
-        return loss,imgs,pred
+        outs = {"gt" : matching_gt, "pred" : matching_pred, "attention" : attention, "pred_index" : pred_idx, "gt_index" : gt_idx}
+        
+        return loss,outs,pred
     
     def _get_src_permutation_idx(self, indices):
         # permute predictions following indices
@@ -136,33 +145,52 @@ class AudioSlotModule(LightningModule):
         return batch_idx, tgt_idx
     
     def training_step(self, batch: Any, batch_idx: int):
-        loss, imgs,slots = self.model_step(batch)
+        loss, outs,slots = self.model_step(batch,train=True)
         # update and log metrics
         self.train_loss(loss)
 
-        self.log("train/loss", self.train_loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("train/loss", self.train_loss, on_step=True, on_epoch=True, prog_bar=True)
+        
+        if batch_idx == 0 and self.global_rank == 0 and self.local_rank == 0:
+            visualize_num = 4
+            gt_vis = outs["gt"][:visualize_num].clone().detach().cpu().numpy()
+            matching_pred_vis = outs["pred"][:visualize_num].clone().detach().cpu().numpy()
+            slots_vis = slots[:visualize_num].clone().detach().cpu().numpy()
+            attention_vis = outs["attention"][:visualize_num].clone().detach().cpu().numpy()
+            
+            os.makedirs(os.path.join(self.logger.save_dir,str(self.current_epoch+1)),exist_ok=True)
+            
+            vis_compare(gt_vis,matching_pred_vis,self.logger.save_dir,str(self.current_epoch+1),outs["gt_index"],outs["pred_index"])
+            vis_slots(slots_vis,self.logger.save_dir,str(self.current_epoch+1))
+            vis_attention(attention_vis,self.logger.save_dir,str(self.current_epoch+1))
+                
+            gt_img = [wandb.Image(os.path.join(self.logger.save_dir,str(self.current_epoch+1),f'gt_with_preds.png'), caption=f"Epoch : {self.current_epoch+1} GT and preds ")]
+            slots_img = [wandb.Image(os.path.join(self.logger.save_dir,str(self.current_epoch+1),f'slots.png'),caption=f"Epoch : {self.current_epoch+1} slots ")]
+            attention_img = [wandb.Image(os.path.join(self.logger.save_dir,str(self.current_epoch+1),f'slots_attn.png'),caption=f"Epoch : {self.current_epoch+1} attention ")]
 
-        if batch_idx == 0 and self.global_rank == 0:
-            # with torch.no_grad():
+            self.logger.log_image(key="GT and preds", images=gt_img)
+            self.logger.log_image(key="slots", images=slots_img)
+            self.logger.log_image(key="attention", images=attention_img)
             
             
             
-            vis_compare(imgs["gt"],imgs['pred'],self.logger.save_dir,str(self.global_rank))
-            vis_slots(slots,self.logger.save_dir,str(self.global_rank))
-            
-            # gt_img = [wandb.Image(os.path.join(self.logger.save_dir,f'gt_with_preds.png'), caption=f"Epoch : {self.current_epoch+1} GT and preds rank : {gpu}")]
-            # slots_img = [wandb.Image(os.path.join(self.logger.save_dir,f'slots.png'),caption=f"Epoch : {self.current_epoch+1} slots rank : {gpu}")]
-            print(self.logger.remote_dir)
-            gt_img = [os.path.join(self.logger.save_dir,f'gt_with_preds.png')]
-            slots_img = [os.path.join(self.logger.save_dir,f'slots.png')]
-
-            self.logger.log_image(key="GT and preds", images=gt_img,caption=[f"Epoch : {self.current_epoch+1} GT and preds"])
-            self.logger.log_image(key="slots", images=slots_img,caption=[f"Epoch : {self.current_epoch+1} slots "])
         # we can return here dict with any tensors
         # and then read it in some callback or in `training_epoch_end()` below
         # remember to always return loss from `training_step()` or backpropagation will fail!
         return {"loss": loss}
     
+    
+    @rank_zero_only
+    def _log_image(self) :
+        
+        gt_img = [os.path.join(self.logger.save_dir,f'gt_with_preds.png')]
+        slots_img = [os.path.join(self.logger.save_dir,f'slots.png')]
+        
+        self.logger.log_image(key="GT and preds", images=gt_img,caption=[f"Epoch : {self.current_epoch+1} GT and preds"])
+        self.logger.log_image(key="slots", images=slots_img,caption=[f"Epoch : {self.current_epoch+1} slots "])
+        
+        pass
+        
     def training_epoch_end(self, outputs: List[Any]):
         # `outputs` is a list of dicts returned from `training_step()`
 
@@ -197,19 +225,19 @@ class AudioSlotModule(LightningModule):
     #         except Exception as e:
     #             print(e)
     #         pass
-    def on_training_epoch_end(self):
-        print("TRAINIGN ONE EPOCH END")
-        print(self.global_rank)            
-        gt_img = [os.path.join(self.logger.save_dir,f'gt_with_preds.png')]
-        slots_img = [os.path.join(self.logger.save_dir,f'slots.png')]
-        self.logger.log_image(key="GT and preds", images=gt_img,caption=[f"Epoch : {self.current_epoch+1} GT and preds"])
-        self.logger.log_image(key="slots", images=slots_img,caption=[f"Epoch : {self.current_epoch+1} slots "])
+    # def on_training_epoch_end(self):
+    #     print("TRAINIGN ONE EPOCH END")
+    #     print(self.global_rank)            
+    #     gt_img = [os.path.join(self.logger.save_dir,f'gt_with_preds.png')]
+    #     slots_img = [os.path.join(self.logger.save_dir,f'slots.png')]
+    #     self.logger.log_image(key="GT and preds", images=gt_img,caption=[f"Epoch : {self.current_epoch+1} GT and preds"])
+    #     self.logger.log_image(key="slots", images=slots_img,caption=[f"Epoch : {self.current_epoch+1} slots "])
                 
 
         
         
     def validation_step(self, batch: Any, batch_idx: int):
-        loss, imgs,slots = self.model_step(batch)
+        loss, imgs,slots = self.model_step(batch,train=False)
 
         # update and log metrics
         self.val_loss(loss)
@@ -251,7 +279,7 @@ class AudioSlotModule(LightningModule):
         """
         optimizer = self.hparams.optimizer(params=self.parameters())
         if self.hparams.scheduler is not None:
-            scheduler = self.hparams.scheduler.scheduler(optimizer=optimizer, T_0=self.hparams.scheduler.T_0)
+            scheduler = self.hparams.scheduler.scheduler(optimizer=optimizer, T_max=self.hparams.scheduler.T_max)
             return {
                 "optimizer": optimizer,
                 "lr_scheduler": {

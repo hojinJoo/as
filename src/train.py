@@ -33,7 +33,7 @@ log = utils.get_pylogger(__name__)
 @utils.task_wrapper
 # autopep8 : on
 def train(cfg: DictConfig) -> Tuple[dict, dict]:
-
+    
     """
     Trains the model. Can additionally evaluate on a testset, using best weights obtained during
     training.
@@ -86,7 +86,7 @@ def train(cfg: DictConfig) -> Tuple[dict, dict]:
         log.info("Starting training!")
         trainer.fit(model=model, datamodule=datamodule,
                     ckpt_path=cfg.get("ckpt_path"))
-
+    
     train_metrics = trainer.callback_metrics
 
     if cfg.get("test"):
