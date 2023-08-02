@@ -149,10 +149,10 @@ class AudioSlotModule(LightningModule):
         # update and log metrics
         self.train_loss(loss)
 
-        self.log("train/loss", self.train_loss, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("train/loss", self.train_loss, on_step=False, on_epoch=True, prog_bar=True)
         
         if batch_idx == 0 and self.global_rank == 0 and self.local_rank == 0:
-            visualize_num = 4
+            visualize_num = 8
             gt_vis = outs["gt"][:visualize_num].clone().detach().cpu().numpy()
             matching_pred_vis = outs["pred"][:visualize_num].clone().detach().cpu().numpy()
             slots_vis = slots[:visualize_num].clone().detach().cpu().numpy()
@@ -164,13 +164,13 @@ class AudioSlotModule(LightningModule):
             vis_slots(slots_vis,self.logger.save_dir,str(self.current_epoch+1))
             vis_attention(attention_vis,self.logger.save_dir,str(self.current_epoch+1))
                 
-            gt_img = [wandb.Image(os.path.join(self.logger.save_dir,str(self.current_epoch+1),f'gt_with_preds.png'), caption=f"Epoch : {self.current_epoch+1} GT and preds ")]
-            slots_img = [wandb.Image(os.path.join(self.logger.save_dir,str(self.current_epoch+1),f'slots.png'),caption=f"Epoch : {self.current_epoch+1} slots ")]
-            attention_img = [wandb.Image(os.path.join(self.logger.save_dir,str(self.current_epoch+1),f'slots_attn.png'),caption=f"Epoch : {self.current_epoch+1} attention ")]
+            # gt_img = [wandb.Image(os.path.join(self.logger.save_dir,str(self.current_epoch+1),f'gt_with_preds.png'), caption=f"Epoch : {self.current_epoch+1} GT and preds ")]
+            # slots_img = [wandb.Image(os.path.join(self.logger.save_dir,str(self.current_epoch+1),f'slots.png'),caption=f"Epoch : {self.current_epoch+1} slots ")]
+            # attention_img = [wandb.Image(os.path.join(self.logger.save_dir,str(self.current_epoch+1),f'slots_attn.png'),caption=f"Epoch : {self.current_epoch+1} attention ")]
 
-            self.logger.log_image(key="GT and preds", images=gt_img)
-            self.logger.log_image(key="slots", images=slots_img)
-            self.logger.log_image(key="attention", images=attention_img)
+            # self.logger.log_image(key="GT and preds", images=gt_img)
+            # self.logger.log_image(key="slots", images=slots_img)
+            # self.logger.log_image(key="attention", images=attention_img)
             
             
             

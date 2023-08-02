@@ -8,6 +8,7 @@ defaults:
   - override /model: audioslot.yaml
   - override /callbacks: audioslot.yaml
   - override /trainer: ddp_spawn.yaml
+  # - override /trainer: test.yaml
 
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters

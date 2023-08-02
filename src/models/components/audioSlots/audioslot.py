@@ -14,7 +14,7 @@ class AudioSlot(nn.Module) :
         super().__init__()
         self.backbone = Backbone(BasicBlock, [3, 4, 6, 3])    
         self.slot_attention = SlotAttention()
-        self.decoder = As_Decoder(64,32)    
+        self.decoder = As_Decoder(128,128,(257,65))    
         
     def forward(self,x,train=True) :
         x = self.backbone(x)
@@ -23,7 +23,6 @@ class AudioSlot(nn.Module) :
         x = x.permute(0,2,3,1)
         x = torch.flatten(x, 1,2)
         x = self.slot_attention(x,train=train)
-        
         slots = x['slots'] # [B,N_slots,C]
         attention = x['attn'] # [B,N_slots,N_slots]
 
