@@ -34,7 +34,7 @@ model:
   #   lin3_size: 64
 
 data:
-  batch_size: 48
+  batch_size: 6
 
 logger:
   wandb:

@@ -14,7 +14,7 @@ class AudioSlot(nn.Module) :
         super().__init__()
         self.backbone = Backbone(BasicBlock, [3, 4, 6, 3])    
         self.slot_attention = SlotAttention()
-        self.decoder = As_Decoder(128,128,(257,65))    
+        self.decoder = As_Decoder(1024,1024,(257,65))    
         
     def forward(self,x,train=True) :
         x = self.backbone(x)

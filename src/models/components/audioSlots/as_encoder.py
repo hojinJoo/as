@@ -55,11 +55,11 @@ class SlotAttention(nn.Module):
     def __init__(
         self,
         num_slots: int = 3,
-        num_iterations: int = 3,
-        num_attn_heads: int = 4,
-        slot_dim: int = 128,
+        num_iterations: int = 6,
+        num_attn_heads: int = 2,
+        slot_dim: int = 1024,
         hid_dim: int = 512,
-        mlp_hid_dim: int = 256,
+        mlp_hid_dim: int = 2048,
         eps: float = 1e-8,
     ):
         super().__init__()
