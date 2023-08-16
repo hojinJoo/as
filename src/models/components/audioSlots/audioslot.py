@@ -38,7 +38,7 @@ class AudioSlot(nn.Module) :
         x = slots.reshape(B*N_slots,C)
         x = x[:,None,None,:] # [B*N_slots,1,1,C]
         # x = x.tile((1, 257, 65, 1)) # original
-        x = x.tile((1, 257, 65, 1)) # TODO: repeat으롷 바꾸기
+        x = x.repeat((1, 257, 65, 1)) # TODO: repeat으롷 바꾸기
         x = self.decoder(x)
         x = x.reshape(B,N_slots,257,65)
         return x, attention

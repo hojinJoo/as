@@ -64,8 +64,8 @@ class SlotAttention(nn.Module):
 
         self.scale = (num_slots // num_attn_heads) ** -0.5
 
-        self.slots_mu = nn.Parameter(torch.randn(1, 1, self.slot_dim))
-        self.slots_sigma = nn.Parameter(torch.randn(1, 1, self.slot_dim))
+        self.slots_mu = nn.Parameter(torch.rand(1, 1, self.slot_dim))
+        self.slots_sigma = nn.Parameter(torch.rand(1, 1, self.slot_dim))
 
         self.norm_input = nn.LayerNorm(self.hid_dim)
         self.norm_slot = nn.LayerNorm(self.slot_dim)

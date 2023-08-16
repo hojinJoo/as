@@ -62,8 +62,9 @@ class AudioSlotModule(LightningModule):
         self.val_snr_best = MaxMetric()
 
     def matcher(self, gt: torch.Tensor, pred: torch.Tensor):
-        # pred: B,4,F,T
+        # pred: B,2,F,T
         # gt: B,2,F,T
+        # example로 잘 되는지 확인
         batch_size, n_gt, F, T = gt.size()
         _, n_slots, _, _ = pred.size()
         idx = []    
