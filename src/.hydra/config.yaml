@@ -1,0 +1,107 @@
+task_name: train
+run_name: ${data.name}_${model.name}
+timestamp: wandb2
+tags:
+- audio_slot
+- libri2mix
+train: true
+test: false
+ckpt_path: null
+seed: 12345
+data:
+  _target_: src.data.libri2mix_datamodule.Libri2MixDataModule
+  name: libri2mix
+  train_metadata_path: /workspace/data/Libri2Mix/wav16k/max/metadata/mixture_train-360_mix_clean.csv
+  test_metadata_path: /workspace/data/Libri2Mix/wav16k/max/metadata/mixture_test_mix_clean.csv
+  crop_size: 8000
+  batch_size: 2
+  num_workers: 4
+  pin_memory: false
+model:
+  _target_: src.models.audioslot_module.AudioSlotModule
+  name: audio_slot
+  optimizer:
+    _target_: torch.optim.Adam
+    _partial_: true
+    lr: 0.0002
+  scheduler:
+    scheduler:
+      _target_: torch.optim.lr_scheduler.CosineAnnealingWarmRestarts
+      _partial_: true
+    T_0: 2500
+  net:
+    _target_: src.models.components.audioSlots.audioslot.AudioSlot
+callbacks:
+  model_checkpoint:
+    _target_: pytorch_lightning.callbacks.ModelCheckpoint
+    dirpath: ${paths.output_dir}/checkpoints
+    filename: epoch={epoch:03d}_train_loss={train/loss:.4f}
+    monitor: train/loss
+    verbose: false
+    save_last: true
+    save_top_k: 3
+    mode: min
+    auto_insert_metric_name: false
+    save_weights_only: false
+    every_n_train_steps: null
+    train_time_interval: null
+    every_n_epochs: null
+    save_on_train_epoch_end: true
+  early_stopping:
+    _target_: pytorch_lightning.callbacks.EarlyStopping
+    monitor: val/loss
+    min_delta: 0.0
+    patience: 3
+    verbose: false
+    mode: max
+    strict: true
+    check_finite: true
+    stopping_threshold: null
+    divergence_threshold: null
+    check_on_train_epoch_end: null
+  model_summary:
+    _target_: pytorch_lightning.callbacks.RichModelSummary
+    max_depth: -1
+  rich_progress_bar:
+    _target_: pytorch_lightning.callbacks.RichProgressBar
+  learning_rate_monitor:
+    _target_: pytorch_lightning.callbacks.LearningRateMonitor
+    logging_interval: epoch
+logger:
+  wandb:
+    _target_: pytorch_lightning.loggers.wandb.WandbLogger
+    name: ${timestamp}
+    save_dir: ${paths.output_dir}
+    offline: false
+    id: null
+    anonymous: null
+    project: slot-attention-lightning
+    log_model: false
+    prefix: ''
+    group: audio_slot
+    tags: ${tags}
+    job_type: ''
+trainer:
+  _target_: pytorch_lightning.Trainer
+  default_root_dir: ${paths.output_dir}
+  min_epochs: 10
+  max_epochs: 300000
+  accelerator: gpu
+  devices: 2
+  precision: 16
+  check_val_every_n_epoch: 50
+  deterministic: false
+  strategy: ddp
+  num_nodes: 1
+  sync_batchnorm: true
+  gradient_clip_val: 0.5
+paths:
+  root_dir: ${oc.env:PROJECT_ROOT}
+  data_dir: ${paths.root_dir}/data/
+  log_dir: ${paths.root_dir}/logs/
+  output_dir: ${hydra:runtime.output_dir}
+  work_dir: ${hydra:runtime.cwd}
+extras:
+  ignore_warnings: false
+  enforce_tags: true
+  print_config: true

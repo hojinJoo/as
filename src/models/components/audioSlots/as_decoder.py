@@ -6,11 +6,10 @@ from typing import Any, Dict, Optional, Tuple
 
 
 class As_Decoder(nn.Module):
-    def __init__(self, hidden_dim,pos_embed_size,input_ft):
+    def __init__(self, slot_dim,num_fourier_bases,input_ft):
         super().__init__()
-        self.pos_embed_size = pos_embed_size
-        self.dim_after_pos = hidden_dim + 2 * pos_embed_size
-        self.pos_embedder = PositionEmbedding(input_ft=input_ft,num_fourier_bases=pos_embed_size)
+        self.dim_after_pos = slot_dim + 2 * num_fourier_bases
+        self.pos_embedder = PositionEmbedding(input_ft=input_ft,num_fourier_bases=num_fourier_bases)
         self.decoder_mlp = nn.Linear(self.dim_after_pos, 1)
     def forward(self, x):
         x = self.pos_embedder(x)
@@ -45,24 +44,18 @@ class PositionEmbedding(nn.Module):
 
     def forward(self, inputs):
         # input shape : B*N_slots,H,W,C
-        # Compute the position embedding only in the initial call using the same rng
-        # as is used for initializing learnable parameters.
         pos_embedding = self.pos_embedding.to(inputs.device)
-        
-        # pos_embedding = pos_embedding.detach()
-
         pos_embedding = pos_embedding.expand(inputs.shape[:-1] + pos_embedding.shape[-1:])
         # pos_embedding = pos_embedding.to(inputs.device)
         x = torch.cat((inputs, pos_embedding), dim=-1)
-        
         return x
     
     
     
 if __name__ == "__main__":
     # a = SoftPositionEmbed(64,(10,20))
-    pos_embedder = PositionEmbedding()
-    sample = torch.rand(123, 10,20,100)
+    pos_embedder = PositionEmbedding((10,20),num_fourier_bases=3)
+    sample = torch.rand(128, 10,20,100)
     print(pos_embedder(sample).shape)
     # pos_embedder = PositionalEncoder1(512, 1)
     # print(pos_embedder(torch.rand(64, 4, 512)).shape)

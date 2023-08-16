@@ -8,15 +8,6 @@ from typing import Optional, List
 import torch.nn.functional as F
 from torch import  Tensor
 
-class AS_Encoder(nn.Module):
-    def __init__(self, input_dim, hidden_dim):
-        super().__init__()
-        self.resnet = Backbone(BasicBlock, [3, 4, 6, 3])
-        self.slot_attention = SlotAttention()
-    def forward(self,x,train=True) :
-        x = self.resnet(x)
-        x = self.slot_attention(x,train=train)
-        return x 
 
 
 class Backbone(ResNet):
@@ -28,7 +19,6 @@ class Backbone(ResNet):
             kernel_size=3, stride=1, padding=1, dilation=1, ceil_mode=False)
         self.layer4[0].conv1.stride = 1
         self.layer4[0].downsample[0].stride = 1
-
     def _forward_impl(self, x):
         # See note [TorchScript super()]
         x = x.unsqueeze(1)

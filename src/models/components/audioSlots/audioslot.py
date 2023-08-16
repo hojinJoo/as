@@ -10,11 +10,19 @@ from src.models.components.audioSlots.as_decoder import As_Decoder
 # from as_decoder import AS_Decoder
 
 class AudioSlot(nn.Module) :
-    def __init__(self,) :
+    def __init__(self,
+                num_slots : int = 2,
+                num_iterations : int = 7,
+                num_attn_heads : int = 1,
+                slot_dim : int = 1024,
+                mlp_hid_dim : int = 2048,
+                eps : float = 1e-8,
+                num_fourier_bases : int = 1024,
+                input_ft : list = [257,65]) :
         super().__init__()
         self.backbone = Backbone(BasicBlock, [3, 4, 6, 3])    
-        self.slot_attention = SlotAttention()
-        self.decoder = As_Decoder(1024,1024,(257,65))    
+        self.slot_attention = SlotAttention(num_slots=num_slots,num_iterations=num_iterations,num_attn_heads=num_attn_heads,slot_dim=slot_dim,mlp_hid_dim=mlp_hid_dim,eps=eps)
+        self.decoder = As_Decoder(slot_dim=slot_dim,num_fourier_bases=num_fourier_bases,input_ft=input_ft)    
         
     def forward(self,x,train=True) :
         x = self.backbone(x)
@@ -29,7 +37,8 @@ class AudioSlot(nn.Module) :
         B,N_slots,C = slots.size()
         x = slots.reshape(B*N_slots,C)
         x = x[:,None,None,:] # [B*N_slots,1,1,C]
-        x = x.tile((1, 257, 65, 1))
+        # x = x.tile((1, 257, 65, 1)) # original
+        x = x.tile((1, 257, 65, 1)) # TODO: repeat으롷 바꾸기
         x = self.decoder(x)
         x = x.reshape(B,N_slots,257,65)
         return x, attention

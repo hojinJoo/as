@@ -279,7 +279,22 @@ class AudioSlotModule(LightningModule):
         """
         optimizer = self.hparams.optimizer(params=self.parameters())
         if self.hparams.scheduler is not None:
-            scheduler = self.hparams.scheduler.scheduler(optimizer=optimizer, T_max=self.hparams.scheduler.T_max)
+            def lr_lambda(step):
+
+                if step < self.hparams.scheduler.warmup_steps:
+                    warmup_factor = float(step) / float(
+                        max(1.0, self.hparams.scheduler.warmup_steps)
+                    )
+                else:
+                    warmup_factor = 1.0
+
+                decay_factor = self.hparams.scheduler.decay_rate ** (
+                    step / self.hparams.scheduler.decay_steps
+                )
+
+                return warmup_factor * decay_factor
+            
+            scheduler = self.hparams.scheduler.scheduler(optimizer=optimizer, lr_lambda=lr_lambda)
             return {
                 "optimizer": optimizer,
                 "lr_scheduler": {
