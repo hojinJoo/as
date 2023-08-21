@@ -6,11 +6,24 @@ from typing import Any, Dict, Optional, Tuple
 
 
 class As_Decoder(nn.Module):
-    def __init__(self, slot_dim,num_fourier_bases,input_ft):
+    def __init__(self, slot_dim,num_fourier_bases,input_ft,dec_mlp_hid_dim):
         super().__init__()
         self.dim_after_pos = slot_dim + 2 * num_fourier_bases
         self.pos_embedder = PositionEmbedding(input_ft=input_ft,num_fourier_bases=num_fourier_bases)
-        self.decoder_mlp = nn.Linear(self.dim_after_pos, 1)
+    
+        self.decoder_mlp = nn.Sequential(
+            nn.Linear(self.dim_after_pos, dec_mlp_hid_dim),
+            nn.ReLU(),
+            nn.Linear(dec_mlp_hid_dim,dec_mlp_hid_dim),
+            nn.ReLU(),
+            nn.Linear(dec_mlp_hid_dim,dec_mlp_hid_dim),
+            nn.ReLU(),
+            nn.Linear(dec_mlp_hid_dim,dec_mlp_hid_dim),
+            nn.ReLU(),
+            nn.Linear(dec_mlp_hid_dim,dec_mlp_hid_dim),
+            nn.ReLU(),
+            nn.Linear(dec_mlp_hid_dim,1)
+        )
     def forward(self, x):
         x = self.pos_embedder(x)
         x = self.decoder_mlp(x).squeeze(-1)

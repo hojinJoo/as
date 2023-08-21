@@ -5,7 +5,7 @@ name: "audio_slot"
 optimizer:
   _target_: torch.optim.Adam
   _partial_: true
-  lr: 0.0002
+  lr: 0.0
 
 # scheduler:
 #   scheduler:
@@ -16,20 +16,23 @@ optimizer:
 
 scheduler:
   scheduler:
-    _target_: torch.optim.lr_scheduler.LambdaLR
+    _target_: src.utils.schedular.CosineAnnealingWarmUpRestarts
     _partial_: true
-  warmup_steps: 20
-  decay_steps: 200
-  decay_rate: 0.5
-
+    T_0 : 10000
+    T_mult : 2
+    T_up : 2500
+    gamma : 0.5
+    eta_max : 0.0002
+  
 
 net:
   _target_: src.models.components.audioSlots.audioslot.AudioSlot
-  num_slots : 2
-  num_iterations : 7
+  num_slots : 4
+  num_iterations : 2
   num_attn_heads : 1
-  slot_dim : 4096
-  mlp_hid_dim : 8192
+  slot_dim : 512
+  mlp_hid_dim : 1024
   eps : 1e-8
-  num_fourier_bases : 1024
+  num_fourier_bases : 16
   input_ft :  [257,65]
+  dec_mlp_hid_dim : 256

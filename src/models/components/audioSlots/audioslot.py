@@ -1,13 +1,13 @@
 import torch
 import torch.nn as nn
-from torchvision.models.resnet import BasicBlock, Bottleneck
 
-from src.models.components.audioSlots.as_encoder import Backbone
+from src.models.components.audioSlots.resnet import get_backbone
 from src.models.components.audioSlots.as_encoder import SlotAttention
 from src.models.components.audioSlots.as_decoder import As_Decoder
 
+# from resnet import get_backbone
 # from as_encoder import Backbone, SlotAttention
-# from as_decoder import AS_Decoder
+# from as_decoder import As_Decoder
 
 class AudioSlot(nn.Module) :
     def __init__(self,
@@ -18,13 +18,17 @@ class AudioSlot(nn.Module) :
                 mlp_hid_dim : int = 2048,
                 eps : float = 1e-8,
                 num_fourier_bases : int = 1024,
-                input_ft : list = [257,65]) :
+                input_ft : list = [257,65],
+                dec_mlp_hid_dim : int = 256) :
         super().__init__()
-        self.backbone = Backbone(BasicBlock, [3, 4, 6, 3])    
+        self.backbone = get_backbone()
+        self.input_ft = input_ft
         self.slot_attention = SlotAttention(num_slots=num_slots,num_iterations=num_iterations,num_attn_heads=num_attn_heads,slot_dim=slot_dim,mlp_hid_dim=mlp_hid_dim,eps=eps)
-        self.decoder = As_Decoder(slot_dim=slot_dim,num_fourier_bases=num_fourier_bases,input_ft=input_ft)    
+        self.decoder = As_Decoder(slot_dim=slot_dim,num_fourier_bases=num_fourier_bases,input_ft=input_ft,dec_mlp_hid_dim=dec_mlp_hid_dim)    
+        
         
     def forward(self,x,train=True) :
+        self.backbone = self.backbone.to(x.device)
         x = self.backbone(x)
         B,C,F,T = x.size()
         
@@ -38,9 +42,9 @@ class AudioSlot(nn.Module) :
         x = slots.reshape(B*N_slots,C)
         x = x[:,None,None,:] # [B*N_slots,1,1,C]
         # x = x.tile((1, 257, 65, 1)) # original
-        x = x.repeat((1, 257, 65, 1)) # TODO: repeat으롷 바꾸기
+        x = x.repeat((1, self.input_ft[0], self.input_ft[1], 1))
         x = self.decoder(x)
-        x = x.reshape(B,N_slots,257,65)
+        x = x.reshape(B,N_slots,self.input_ft[0], self.input_ft[1])
         return x, attention
 
 if __name__=="__main__" :
@@ -52,4 +56,4 @@ if __name__=="__main__" :
     sample = after_stft.unsqueeze(0).repeat((16, 1, 1))
     fullModel = AudioSlot()
     out = fullModel(sample)
-    print(out.size())
+    print(out[0].size())

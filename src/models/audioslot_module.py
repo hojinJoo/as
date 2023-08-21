@@ -12,7 +12,7 @@ from pytorch_lightning.utilities import rank_zero_only
 
 from utils.evaluator import SISNREvaluator
 from src.utils.audio_vis import vis_compare,vis_slots,vis_attention
-
+from src.utils.schedular import CosineAnnealingWarmUpRestarts
 
 class AudioSlotModule(LightningModule):
     """Example of LightningModule for MNIST classification.
@@ -102,7 +102,6 @@ class AudioSlotModule(LightningModule):
         self.val_snr_best.reset()
 
     def model_step(self, batch: Any,train:bool=False):
-        
         mixture = batch["mixture"]
         source1 = batch["source_1"]
         source2 = batch["source_2"]
@@ -280,22 +279,23 @@ class AudioSlotModule(LightningModule):
         """
         optimizer = self.hparams.optimizer(params=self.parameters())
         if self.hparams.scheduler is not None:
-            def lr_lambda(step):
+            # scheduler = CosineAnnealingWarmUpRestarts(optimizer=optimizer,T_0=self.hparams.scheduler.scheduler.T_0)
+            # def lr_lambda(step):
+            #     if step < self.hparams.scheduler.warmup_steps:
+            #         return (self.hparams)
+            #         warmup_factor = float(step) / float(
+            #             max(1.0, self.hparams.scheduler.warmup_steps)
+            #         )
+            #     else:
+            #         warmup_factor = 1.0
 
-                if step < self.hparams.scheduler.warmup_steps:
-                    warmup_factor = float(step) / float(
-                        max(1.0, self.hparams.scheduler.warmup_steps)
-                    )
-                else:
-                    warmup_factor = 1.0
+            #     decay_factor = self.hparams.scheduler.decay_rate ** (
+            #         step / self.hparams.scheduler.decay_steps
+            #     )
 
-                decay_factor = self.hparams.scheduler.decay_rate ** (
-                    step / self.hparams.scheduler.decay_steps
-                )
-
-                return warmup_factor * decay_factor
+            #     return warmup_factor * decay_factor
             
-            scheduler = self.hparams.scheduler.scheduler(optimizer=optimizer, lr_lambda=lr_lambda)
+            scheduler = self.hparams.scheduler.scheduler(optimizer=optimizer)
             return {
                 "optimizer": optimizer,
                 "lr_scheduler": {

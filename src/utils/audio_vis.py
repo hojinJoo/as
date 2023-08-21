@@ -92,7 +92,7 @@ def vis_attention(attn,log_dir,epoch) :
     attn : (B,N_heads,N_in,N_slots) => 16,4,256,7
     """
     B, N_heads, N_in, N_slots = attn.shape
-    attn_mean = attn.mean(axis=1).transpose(0,2,1).reshape(B,N_slots,32,8) # (B,N_in,32,8)
+    attn_mean = attn.mean(axis=1).transpose(0,2,1).reshape(B,N_slots,33,9) # (B,N_in,32,8)
     
     attn_fig, attn_axes = plt.subplots(B, N_slots, figsize=(12, 3*B))
 
