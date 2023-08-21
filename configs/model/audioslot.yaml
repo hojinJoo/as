@@ -18,7 +18,7 @@ scheduler:
   scheduler:
     _target_: src.utils.schedular.CosineAnnealingWarmUpRestarts
     _partial_: true
-    T_0 : 100000
+    T_0 : 300000
     T_mult : 2
     T_up : 2500
     gamma : 0.5
