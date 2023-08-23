@@ -252,14 +252,9 @@ class AudioSlotModule(LightningModule):
         self.val_snr.reset()
         
         self.val_snr_best(snr)
+        self.log("val/snr", snr, on_step=False, on_epoch=True, prog_bar=True,sync_dist=True)
+        self.log("val/snr_best", self.val_snr_best.compute(), on_step=False, on_epoch=True, prog_bar=True,sync_dist=True)
         
-        self.log_dict(
-            {
-                "val/snr": snr,
-                "val/snr_best": self.val_snr_best.compute(),
-            },
-            prog_bar=True,
-        )
         
         # log `val_acc_best` as a value through `.compute()` method, instead of as a metric object
         # otherwise metric would be reset by lightning after each epoch

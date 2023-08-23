@@ -59,9 +59,8 @@ class Libri2Mix(Dataset):
         return self.num_files
 
 if __name__ =="__main__" :  
-    a = Libri2Mix("/workspace/data/Libri2Mix/wav16k/max/metadata/mixture_train-360_mix_clean.csv")
-    print(a[0]['mixture'].size())
-    print(a[0]['source_1'].size())
-    print(a[0]['source_2'].size())
+    a = Libri2Mix("/media/Libri2Mix/mixture_train-360_mix_clean_metadata.csv")
+    print(len(a))
     
-    
+# 1에폭 :50800, 1 step 64,
+# 
