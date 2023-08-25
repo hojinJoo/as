@@ -74,6 +74,7 @@ class Libri2MixDataModule(LightningDataModule):
         self.data_train = Libri2Mix(
             metadata_path=self.train_metadata_path,
             crop_size=self.crop_size,
+            test=False
         )
         self.data_val = Libri2Mix(
             metadata_path=self.test_metadata_path,

@@ -64,7 +64,6 @@ class AudioSlotModule(LightningModule):
     def matcher(self, gt: torch.Tensor, pred: torch.Tensor):
         # pred: B,2,F,T
         # gt: B,2,F,T
-        # example로 잘 되는지 확인
         batch_size, n_gt, F, T = gt.size()
         _, n_slots, _, _ = pred.size()
         idx = []    
@@ -133,14 +132,7 @@ class AudioSlotModule(LightningModule):
         
         matching_pred = pred[pred_idx].view(B,n_src,F,T).type(torch.float32)
         matching_gt = gt[gt_idx].view(B,n_src,F,T)
-        # print(f"train : {train} prediction {matching_pred.requires_grad}")
-        
-        # print(f"preidx size : {pred_idx}")
-        # print(f"pred idx : {pred_idx[0]}")
-        # print(f"gt idx : {gt_idx[0]}")
-        # print(f"prediction max : {matching_pred.max()} min : {matching_pred.min()} mean : {matching_pred.mean()} std : {matching_pred.std()} median : {matching_pred.median()} percent over average : {100*((matching_pred > matching_pred.mean()).sum())/matching_pred.numel()}")
-        # print(f"gt max : {matching_gt.max()} min : {matching_gt.min()} mean : {matching_gt.mean()} std : {matching_gt.std()} median : {matching_gt.median()} percent over average : { 100*((matching_gt > matching_gt.mean()).sum())/matching_gt.numel()}")
-        
+
         
         loss = self.criterion( matching_gt,matching_pred)
         
@@ -197,18 +189,22 @@ class AudioSlotModule(LightningModule):
         
     def validation_step(self, batch: Any, batch_idx: int):
         # batch : [1,F,T]
-        _,F,T = batch["mixture"].size()
+        # print(batch["mixture"].size())
+        # print(f"source {batch['source_1'].size()}")
+        _,_,F,T = batch["mixture"].size()
         n_src = 2
         segment_step = self.hparams.net.input_ft[1]
         prediction = torch.zeros(1,n_src,F,T)
         loss = 0
         for segment in range(0,batch["mixture"].size(2),segment_step):
-            source1 = batch["source_1"][:,:,segment:segment+segment_step]
-            source2 = batch["source_2"][:,:,segment:segment+segment_step]
+            source1 = batch["source_1"].squeeze(0)[:,:,segment:segment+segment_step]
+            source2 = batch["source_2"].squeeze(0)[:,:,segment:segment+segment_step]
             mixture = source1 + source2
             
             mixture_original_size = mixture.size()
             if mixture.size(2) != segment_step :
+                # print("mixture size",mixture.size())
+                # print(f"segment {segment_step}")
                 source1 = torch.cat((source1,torch.zeros(source1.size(0),source1.size(1),segment_step-source1.size(2))),dim=2)
                 source2 = torch.cat((source2,torch.zeros(source2.size(0),source2.size(1),segment_step-source2.size(2))),dim=2)
                 mixture = torch.cat((mixture,torch.zeros(mixture.size(0),mixture.size(1),segment_step-mixture.size(2))),dim=2)
@@ -219,7 +215,8 @@ class AudioSlotModule(LightningModule):
             gt_idx = outs["gt_index"]
             
             sorted_gt_idx,sorted_pred_idx = self.find_pred_idx_original_gt(gt_idx, pred_idx)
-            sorted_matching_pred = slots[sorted_pred_idx].view(1,n_src,F,T).type(torch.float32)
+            
+            sorted_matching_pred = slots[sorted_pred_idx].unsqueeze(0)
 
             
             if mixture.size(2) != segment_step :
@@ -227,11 +224,12 @@ class AudioSlotModule(LightningModule):
             else :
                 prediction[:,:,:,segment:segment+segment_step] = sorted_matching_pred
         
-        gt = torch.cat((batch["source_1"],batch["source_2"]),dim=0).unsqueeze(0)
+        gt = torch.cat((batch["source_1"].squeeze(0),batch["source_2"].squeeze(0)),dim=0).unsqueeze(0).cpu()
         prediction = torch.pow(prediction,10/3)
         mask = self.ibm_mask(prediction)
         prediction = mask * prediction
         # update and log metrics
+        
         self.val_loss(loss)
         self.log("val/loss", self.val_loss, on_step=False, on_epoch=True, prog_bar=True)
         self.val_snr.evaluate(prediction,gt)

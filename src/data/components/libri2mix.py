@@ -27,9 +27,9 @@ class Libri2Mix(Dataset):
         if self.test :
             mixtureID,mixture_path,source_1_path,source_2_path,length = self.meta_data.values[index]
             
-            mixture_path = mixture_path.replace("/media","/media/NAS3/CIPLAB/users/hj")
-            source_1_path = source_1_path.replace("/media","/media/NAS3/CIPLAB/users/hj")
-            source_2_path = source_2_path.replace("/media","/media/NAS3/CIPLAB/users/hj")
+            # mixture_path = mixture_path.replace("/media","/media/NAS3/CIPLAB/users/hj")
+            # source_1_path = source_1_path.replace("/media","/media/NAS3/CIPLAB/users/hj")
+            # source_2_path = source_2_path.replace("/media","/media/NAS3/CIPLAB/users/hj")
             
             mixture_wav,sample_rate = torchaudio.load(mixture_path)
             source_1,sample_rate = torchaudio.load(source_1_path)
