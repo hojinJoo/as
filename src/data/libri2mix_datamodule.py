@@ -78,8 +78,9 @@ class Libri2MixDataModule(LightningDataModule):
         self.data_val = Libri2Mix(
             metadata_path=self.test_metadata_path,
             crop_size=self.crop_size,
+            test=True
         )
-
+        
         
 
     def train_dataloader(self):
@@ -95,7 +96,7 @@ class Libri2MixDataModule(LightningDataModule):
     def val_dataloader(self):
         return DataLoader(
             dataset=self.data_val,
-            batch_size=self.hparams.batch_size,
+            batch_size=1,
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
             shuffle=False,
@@ -106,10 +107,11 @@ class Libri2MixDataModule(LightningDataModule):
     def test_dataloader(self):
         return DataLoader(
             dataset=self.data_val,
-            batch_size=self.hparams.batch_size,
+            batch_size=1,
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
             shuffle=False,
+            persistent_workers=True
         )
 
     def teardown(self, stage: Optional[str] = None):

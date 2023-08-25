@@ -41,6 +41,23 @@ def get_tgt_permutation_idx( indices):
     tgt_idx = torch.cat([tgt for (_, tgt) in indices])
     return batch_idx, tgt_idx
 
+def find_pred_idx_original_gt(gt_idx, pred_idx) :
+    # permute targets following indices
+    new_gt_idx = [gt_idx[0].clone(),gt_idx[1].clone()]
+    new_pred_idx = [pred_idx[0].clone(),pred_idx[1].clone()]
+    
+    for i,val in enumerate(gt_idx[1]) :
+        if i % 2 == 0 and val != 0:
+            new_pred_idx[1][i] =pred_idx[1][i+1] 
+            new_pred_idx[1][i+1] = pred_idx[1][i]
+            
+            new_gt_idx[1][i] = 0
+            new_gt_idx[1][i+1] = 1
+    print("----------------------------------------------")
+    print(new_gt_idx)
+    print(new_pred_idx)
+    return new_gt_idx, new_pred_idx
+
 
 B =2
 F = 2
@@ -48,18 +65,22 @@ T = 3
 
 gt = torch.rand(B,2,F,T)
 gt[0][0] = torch.rand(F,T)
-gt[0][1] = torch.rand(F,T) * 10
+gt[0][1] = torch.rand(F,T) + 1000
 
-gt[1][0] = torch.rand(F,T) * 40
-gt[1][1] = torch.rand(F,T) * 80
+gt[1][0] = torch.rand(F,T) + 250
+gt[1][1] = torch.rand(F,T) + 80
 
-pred = torch.rand(B,2,F,T)
+pred = torch.rand(B,4,F,T)
 
-pred[0][0] = torch.rand(F,T) * 10
+pred[0][0] = torch.rand(F,T) + 90
 pred[0][1] = torch.rand(F,T) 
+pred[0][2] = torch.rand(F,T) + 1000
+pred[0][3] = torch.rand(F,T) + 40
 
-pred[1][0] = torch.rand(F,T) * 80
-pred[1][1] = torch.rand(F,T) * 40
+pred[1][0] = torch.rand(F,T) + 100
+pred[1][1] = torch.rand(F,T) + 80
+pred[1][2] = torch.rand(F,T) + 801234
+pred[1][3] = torch.rand(F,T) + 250
 
 
 
@@ -68,10 +89,16 @@ indices = matcher(gt, pred)
 pred_idx  = get_src_permutation_idx(indices)
 gt_idx = get_tgt_permutation_idx(indices)
 
+
+# pred_according_to_gt = pred[pred_idx]
+
+
 print(gt_idx)
 print(pred_idx)
+find_pred_idx_original_gt(gt_idx, pred_idx)
 
-print(gt[gt_idx])
-print(pred[pred_idx])
+# print(gt[gt_idx])
+# print(pred[pred_idx])
+
         
         

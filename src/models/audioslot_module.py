@@ -90,7 +90,21 @@ class AudioSlotModule(LightningModule):
         return idx
         
         
+    def find_pred_idx_original_gt(self,gt_idx, pred_idx) :
+    # permute targets following indices
+        new_gt_idx = [gt_idx[0].clone(),gt_idx[1].clone()]
+        new_pred_idx = [pred_idx[0].clone(),pred_idx[1].clone()]
         
+        for i,val in enumerate(gt_idx[1]) :
+            if i % 2 == 0 and val != 0:
+                new_pred_idx[1][i] =pred_idx[1][i+1] 
+                new_pred_idx[1][i+1] = pred_idx[1][i]
+                
+                new_gt_idx[1][i] = 0
+                new_gt_idx[1][i+1] = 1
+        
+        return new_gt_idx, new_pred_idx
+
     def forward(self, x: torch.Tensor,train:bool=False):
         return self.net(x,train=train)
 
@@ -102,13 +116,15 @@ class AudioSlotModule(LightningModule):
         self.val_snr_best.reset()
 
     def model_step(self, batch: Any,train:bool=False):
-        mixture = batch["mixture"]
+        
         source1 = batch["source_1"]
         source2 = batch["source_2"]
+        mixture = batch["source_1"] + batch["source_2"]
+        
         gt = torch.stack((source1, source2), dim=1)
         B,n_src,F,T = gt.size()
 
-        pred,attention = self.forward(mixture,train=train) # B,7,F,T
+        pred,attention = self.forward(mixture,train=train) 
         
         indices = self.matcher(gt, pred)
         
@@ -164,19 +180,6 @@ class AudioSlotModule(LightningModule):
             vis_slots(slots_vis,self.logger.save_dir,str(self.current_epoch+1))
             vis_attention(attention_vis,self.logger.save_dir,str(self.current_epoch+1))
                 
-            # gt_img = [wandb.Image(os.path.join(self.logger.save_dir,str(self.current_epoch+1),f'gt_with_preds.png'), caption=f"Epoch : {self.current_epoch+1} GT and preds ")]
-            # slots_img = [wandb.Image(os.path.join(self.logger.save_dir,str(self.current_epoch+1),f'slots.png'),caption=f"Epoch : {self.current_epoch+1} slots ")]
-            # attention_img = [wandb.Image(os.path.join(self.logger.save_dir,str(self.current_epoch+1),f'slots_attn.png'),caption=f"Epoch : {self.current_epoch+1} attention ")]
-
-            # self.logger.log_image(key="GT and preds", images=gt_img)
-            # self.logger.log_image(key="slots", images=slots_img)
-            # self.logger.log_image(key="attention", images=attention_img)
-            
-            
-            
-        # we can return here dict with any tensors
-        # and then read it in some callback or in `training_epoch_end()` below
-        # remember to always return loss from `training_step()` or backpropagation will fail!
         return {"loss": loss}
     
     
@@ -190,59 +193,48 @@ class AudioSlotModule(LightningModule):
         self.logger.log_image(key="slots", images=slots_img,caption=[f"Epoch : {self.current_epoch+1} slots "])
         
         pass
-        
-    def training_epoch_end(self, outputs: List[Any]):
-        # `outputs` is a list of dicts returned from `training_step()`
-
-        # Warning: when overriding `training_epoch_end()`, lightning accumulates outputs from all batches of the epoch
-        # this may not be an issue when training on mnist
-        # but on larger datasets/models it's easy to run into out-of-memory errors
-
-        # consider detaching tensors before returning them from `training_step()`
-        # or using `on_train_epoch_end()` instead which doesn't accumulate outputs
-        pass
-    # def on_train_epoch_end(self):
-    #     # 이거 해보기
-    #     # if self.global_rank == 0:
-    #     #     gt_img = [wandb.Image(os.path.join(self.logger.save_dir,f'gt_with_preds_{str(self.global_rank)}.png'), caption=f"Epoch : {self.current_epoch+1} GT and preds rank : {self.global_rank}")]
-    #     #     slots_img = [wandb.Image(os.path.join(self.logger.save_dir,f'slots_{str(self.global_rank)}.png'),caption=f"Epoch : {self.current_epoch+1} slots rank : {self.global_rank}")]
             
-    #     #     try : 
-    #     #         self.logger.log_image(key="GT and preds", images=gt_img)
-    #     #         self.logger.log_image(key="slots", images=slots_img)
-    #     #     except Exception as e:
-    #     #         print(e)
-    #     #     pass
-    #     num_gpus = os.environ["NVIDIA_VISIBLE_DEVICES"]
-    #     for i in range(len(num_gpus.split(","))):
-            
-    #         gt_img = [wandb.Image(os.path.join(self.logger.save_dir,f'gt_with_preds_{str(i)}.png'), caption=f"Epoch : {self.current_epoch+1} GT and preds rank : {i}")]
-    #         slots_img = [wandb.Image(os.path.join(self.logger.save_dir,f'slots_{str(i)}.png'),caption=f"Epoch : {self.current_epoch+1} slots rank : {i}")]
-            
-    #         try : 
-    #             self.logger.log_image(key="GT and preds", images=gt_img)
-    #             self.logger.log_image(key="slots", images=slots_img)
-    #         except Exception as e:
-    #             print(e)
-    #         pass
-    # def on_training_epoch_end(self):
-    #     print("TRAINIGN ONE EPOCH END")
-    #     print(self.global_rank)            
-    #     gt_img = [os.path.join(self.logger.save_dir,f'gt_with_preds.png')]
-    #     slots_img = [os.path.join(self.logger.save_dir,f'slots.png')]
-    #     self.logger.log_image(key="GT and preds", images=gt_img,caption=[f"Epoch : {self.current_epoch+1} GT and preds"])
-    #     self.logger.log_image(key="slots", images=slots_img,caption=[f"Epoch : {self.current_epoch+1} slots "])
-                
-
-        
         
     def validation_step(self, batch: Any, batch_idx: int):
-        loss, imgs,slots = self.model_step(batch,train=False)
+        # batch : [1,F,T]
+        _,F,T = batch["mixture"].size()
+        n_src = 2
+        segment_step = self.hparams.net.input_ft[1]
+        prediction = torch.zeros(1,n_src,F,T)
+        loss = 0
+        for segment in range(0,batch["mixture"].size(2),segment_step):
+            source1 = batch["source_1"][:,:,segment:segment+segment_step]
+            source2 = batch["source_2"][:,:,segment:segment+segment_step]
+            mixture = source1 + source2
+            
+            mixture_original_size = mixture.size()
+            if mixture.size(2) != segment_step :
+                source1 = torch.cat((source1,torch.zeros(source1.size(0),source1.size(1),segment_step-source1.size(2))),dim=2)
+                source2 = torch.cat((source2,torch.zeros(source2.size(0),source2.size(1),segment_step-source2.size(2))),dim=2)
+                mixture = torch.cat((mixture,torch.zeros(mixture.size(0),mixture.size(1),segment_step-mixture.size(2))),dim=2)
+            
+            loss,outs,slots = self.model_step({"mixture" : mixture, "source_1" : source1, "source_2" : source2},train=False)
+            loss += loss
+            pred_idx = outs["pred_index"]
+            gt_idx = outs["gt_index"]
+            
+            sorted_gt_idx,sorted_pred_idx = self.find_pred_idx_original_gt(gt_idx, pred_idx)
+            sorted_matching_pred = slots[sorted_pred_idx].view(1,n_src,F,T).type(torch.float32)
 
+            
+            if mixture.size(2) != segment_step :
+                prediction[:,:,:,segment:] = sorted_matching_pred[:,:,:,:mixture_original_size[2]]
+            else :
+                prediction[:,:,:,segment:segment+segment_step] = sorted_matching_pred
+        
+        gt = torch.cat((batch["source_1"],batch["source_2"]),dim=0).unsqueeze(0)
+        prediction = torch.pow(prediction,10/3)
+        mask = self.ibm_mask(prediction)
+        prediction = mask * prediction
         # update and log metrics
         self.val_loss(loss)
         self.log("val/loss", self.val_loss, on_step=False, on_epoch=True, prog_bar=True)
-        self.val_snr.evaluate(imgs["pred"],imgs['gt'])
+        self.val_snr.evaluate(prediction,gt)
         # self.log("val/acc", self.val_acc, on_step=False, on_epoch=True, prog_bar=True)
 
         return {"loss": loss}
@@ -259,7 +251,18 @@ class AudioSlotModule(LightningModule):
         # log `val_acc_best` as a value through `.compute()` method, instead of as a metric object
         # otherwise metric would be reset by lightning after each epoch
 
+    
+    def ibm_mask(self,sources) :
+        # ideal binary mask
+        # sources : B,2,F,T
+        ibm = (sources == torch.max(sources, dim=1, keepdim=True).values).float()
+        ibm = ibm / torch.sum(ibm, dim=1, keepdim=True)
+        ibm[ ibm <= 0.5] = 0
+        return ibm
+        
     def test_step(self, batch: Any, batch_idx: int):
+        # train과 다르게 [B,T,F] 형태로 들어옴
+        # for 
         self.validation_step(batch, batch_idx)
 
     def test_epoch_end(self, outputs: List[Any]):
