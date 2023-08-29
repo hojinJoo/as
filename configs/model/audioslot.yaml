@@ -26,7 +26,7 @@ scheduler:
     T_mult : 1
     T_up : 20
     gamma : 0.5
-    eta_max : 0.0002
+    eta_max : 0.0001
   
 
 net:
@@ -40,3 +40,4 @@ net:
   num_fourier_bases : 16
   input_ft :  [257,65]
   dec_mlp_hid_dim : 256
+

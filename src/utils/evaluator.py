@@ -19,8 +19,10 @@ class SISNREvaluator :
             (SI_SNR)
         """
         self.metric.to(pred.device)
-        self.SI_SNR.append(self.metric(pred,gt))
-        pass
+        snr = self.metric(pred,gt)
+        self.SI_SNR.append(snr)
+        
+        return snr
     def reset(self) :
         self.SI_SNR = []
     

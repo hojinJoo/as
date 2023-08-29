@@ -55,6 +55,52 @@ def vis_compare(matching_gt, matching_pred,log_dir,epoch,gt_idx,pred_idx):
     plt.close() # closes the current figure
 
 
+def test_vis(matching_gt, matching_pred,log_dir,dir_name,fname) :
+    """
+    `gt`: (1,2,F,T)
+    `pred`: (1, 2,F,T)
+    """
+    _, F, T = matching_gt.shape
+    
+    fig, axes = plt.subplots(1, 4, figsize=(12, 3*1))
+    matching_pred[matching_pred < 0] =0
+    
+    for j in range(2):
+        # GT 어텐션 맵 그리기
+        gt_value = 20 * np.log10(matching_gt[j] + 1e-8)
+        gt_min = gt_value.min()
+        gt_max = gt_value.max()
+        
+        gt = axes[j*2].imshow(gt_value, origin="lower", aspect="auto",vmin=gt_min,vmax=gt_max)
+        axes[ j*2].set_title(f'GT {j+1}')
+        
+        color_bar_gt = fig.colorbar(gt, ax=axes[j*2])
+        
+        # Prediction 어텐션 맵 그리기
+        pred = axes[ j*2+1].imshow((20 * np.log10(matching_pred[j] + 1e-8)), origin="lower", aspect="auto",vmin=gt_min,vmax=gt_max)
+        axes[ j*2+1].set_title(f'Matching pred')
+
+        color_bar_pred = fig.colorbar(pred, ax=axes[j*2+1])
+        
+        # 축 숨기기
+        axes[ j*2].axis('off')
+        axes[ j*2+1].axis('off')
+            
+            
+    # 빈 축 숨기기
+    for j in range(4):
+        axes[ j].axis('off')
+    
+    
+    fig.tight_layout()
+    # 그림판 저장
+    
+    plt.savefig(os.path.join(log_dir,dir_name,f'test_{fname}.png'), dpi=300)
+    plt.cla()   # clear the current axes
+    plt.clf()   # clear the current figure
+    plt.close() # closes the current figure
+
+
 def vis_slots(all_preds,log_dir,epoch) :
     B, n_slots, F, T = all_preds.shape
     

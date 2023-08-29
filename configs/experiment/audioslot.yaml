@@ -24,7 +24,7 @@ trainer:
   min_epochs: 10
   max_epochs: 378
   gradient_clip_val: 0.5
-
+  check_val_every_n_epoch: 3
 model:
   optimizer:
     lr: 0.0
@@ -33,9 +33,11 @@ model:
   #   lin2_size: 256
   #   lin3_size: 64
 
+train : True
+
 data:
   #r1 : 36
-  batch_size: 36
+  batch_size: 12
 
 logger:
   wandb:
@@ -47,3 +49,5 @@ hydra :
     handlers:
       file:
         filename: ${paths.output_dir}/${hydra.job.name}.log
+
+ckpt_path : /workspace/as/epoch=085_train_loss=0.0275.ckpt

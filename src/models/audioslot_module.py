@@ -11,7 +11,7 @@ import wandb
 from pytorch_lightning.utilities import rank_zero_only
 
 from utils.evaluator import SISNREvaluator
-from src.utils.audio_vis import vis_compare,vis_slots,vis_attention
+from src.utils.audio_vis import vis_compare,vis_slots,vis_attention,test_vis
 from src.utils.schedular import CosineAnnealingWarmUpRestarts
 
 class AudioSlotModule(LightningModule):
@@ -119,7 +119,6 @@ class AudioSlotModule(LightningModule):
         source1 = batch["source_1"]
         source2 = batch["source_2"]
         mixture = batch["source_1"] + batch["source_2"]
-        
         gt = torch.stack((source1, source2), dim=1)
         B,n_src,F,T = gt.size()
 
@@ -135,7 +134,6 @@ class AudioSlotModule(LightningModule):
 
         
         loss = self.criterion( matching_gt,matching_pred)
-        
         outs = {"gt" : matching_gt, "pred" : matching_pred, "attention" : attention, "pred_index" : pred_idx, "gt_index" : gt_idx}
         
         return loss,outs,pred
@@ -196,18 +194,17 @@ class AudioSlotModule(LightningModule):
         segment_step = self.hparams.net.input_ft[1]
         prediction = torch.zeros(1,n_src,F,T)
         loss = 0
-        for segment in range(0,batch["mixture"].size(2),segment_step):
+        for segment in range(0,T,segment_step):
             source1 = batch["source_1"].squeeze(0)[:,:,segment:segment+segment_step]
             source2 = batch["source_2"].squeeze(0)[:,:,segment:segment+segment_step]
             mixture = source1 + source2
-            
             mixture_original_size = mixture.size()
-            if mixture.size(2) != segment_step :
+            if mixture_original_size[2] != segment_step :
                 # print("mixture size",mixture.size())
                 # print(f"segment {segment_step}")
-                source1 = torch.cat((source1,torch.zeros(source1.size(0),source1.size(1),segment_step-source1.size(2))),dim=2)
-                source2 = torch.cat((source2,torch.zeros(source2.size(0),source2.size(1),segment_step-source2.size(2))),dim=2)
-                mixture = torch.cat((mixture,torch.zeros(mixture.size(0),mixture.size(1),segment_step-mixture.size(2))),dim=2)
+                source1 = torch.cat((source1,torch.zeros(source1.size(0),source1.size(1),segment_step-source1.size(2)).to(source1.device) ),dim=2)
+                source2 = torch.cat((source2,torch.zeros(source2.size(0),source2.size(1),segment_step-source2.size(2)).to(source2.device)),dim=2)
+                mixture = torch.cat((mixture,torch.zeros(mixture.size(0),mixture.size(1),segment_step-mixture.size(2)).to(mixture.device)),dim=2)
             
             loss,outs,slots = self.model_step({"mixture" : mixture, "source_1" : source1, "source_2" : source2},train=False)
             loss += loss
@@ -215,26 +212,38 @@ class AudioSlotModule(LightningModule):
             gt_idx = outs["gt_index"]
             
             sorted_gt_idx,sorted_pred_idx = self.find_pred_idx_original_gt(gt_idx, pred_idx)
-            
             sorted_matching_pred = slots[sorted_pred_idx].unsqueeze(0)
-
             
-            if mixture.size(2) != segment_step :
+            if mixture_original_size[2] != segment_step :
                 prediction[:,:,:,segment:] = sorted_matching_pred[:,:,:,:mixture_original_size[2]]
             else :
                 prediction[:,:,:,segment:segment+segment_step] = sorted_matching_pred
-        
-        gt = torch.cat((batch["source_1"].squeeze(0),batch["source_2"].squeeze(0)),dim=0).unsqueeze(0).cpu()
+
+        gt = torch.stack((batch["source_1"].squeeze(0),batch["source_2"].squeeze(0)),dim=1).cpu()
         prediction = torch.pow(prediction,10/3)
         mask = self.ibm_mask(prediction)
-        prediction = mask * prediction
-        # update and log metrics
         
+  
+        model_input = (batch['source_1'] + batch['source_2']).squeeze(0).cpu()
+        
+        prediction =  model_input * prediction
+        # update and log metrics
+        gt_vis = gt.clone().detach().squeeze(0).cpu().numpy()
+        matching_pred_vis = prediction.clone().detach().squeeze(0).cpu().numpy()
+        
+        os.makedirs(os.path.join(self.logger.save_dir,'test'),exist_ok=True)
+        test_vis(gt_vis,matching_pred_vis,self.logger.save_dir,'test',str(batch_idx))
+            
+        
+
         self.val_loss(loss)
         self.log("val/loss", self.val_loss, on_step=False, on_epoch=True, prog_bar=True)
-        self.val_snr.evaluate(prediction,gt)
+
+        snr = self.val_snr.evaluate(prediction,gt)
         # self.log("val/acc", self.val_acc, on_step=False, on_epoch=True, prog_bar=True)
 
+        self.log("val/snr", snr, on_step=True, on_epoch=True, prog_bar=True,sync_dist=True)
+        self.log("val/snr_best", self.val_snr_best.compute(), on_step=False, on_epoch=True, prog_bar=True,sync_dist=True)
         return {"loss": loss}
 
     def validation_epoch_end(self, outputs: List[Any]):
