@@ -4,45 +4,36 @@
 # python train.py experiment=example
 
 defaults:
-  - override /data: libri2mix.yaml
-  - override /model: audioslot.yaml
+  - override /data: musdb.yaml
+  - override /model: mus_audioslot.yaml
   - override /callbacks: audioslot.yaml
-  - override /trainer: ddp_spawn.yaml
-  # - override /trainer: test.yaml
+  # - override /trainer: ddp_spawn.yaml
+  - override /trainer: test.yaml
 
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
 
-tags: ["audio_slot", "libri2mix"]
+tags: ["audio_slot", "musdb18"]
 
 
-# ckpt_path : /workspace/as/logs/train/runs/libri2mix_audio_slot/s20_step_epoch/checkpoints/epoch=101_train_loss=0.0327.ckpt
 
 
 seed: 12345
 
 trainer:
-  min_epochs: 10
-  max_epochs: 378
+  min_epochs: 500
+  max_epochs: 1000
   gradient_clip_val: 0.5
-model:
-  optimizer:
-    lr: 0.0
-  # net:
-  #   lin1_size: 128
-  #   lin2_size: 256
-  #   lin3_size: 64
 
 train : True
 
 data:
-  #r1 : 36
-  batch_size: 12
+  batch_size: 1
 
 logger:
   wandb:
     tags: ${tags}
-    group: "audio_slot"
+    group: "musdb"
 
 hydra :
   job_logging :

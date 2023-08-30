@@ -5,21 +5,32 @@ name: "audio_slot"
 optimizer:
   _target_: torch.optim.Adam
   _partial_: true
-  lr: 0.0
+  lr: 2e-4
 
 # scheduler:
 #   scheduler:
-#     _target_: torch.optim.lr_scheduler.CosineAnnealingLR
+#     _target_: torch.optim.lr_scheduler.LambdaLR
 #     _partial_: true
-#   warmup_steps: 2500
-#   T_max: 2500
+#   warmup_steps: 20
+#   decay_steps: 387
+#   decay_rate: 0.5
 
 
 # 1에폭 : 50800,
 # 논문에서 1step 64 2500 warmup, 300k step
 # 
+# scheduler:
+#   scheduler:
+#     _target_: src.utils.schedular.CosineAnnealingWarmUpRestarts
+#     _partial_: true
+#     T_0 : 300 #300
+#     T_mult : 2 # 1
+#     T_up : 20
+#     gamma : 0.5
+#     eta_max : 0.0002
+  
 scheduler:
-  scheduler:
+  scheduler: 
     _target_: src.utils.schedular.CosineAnnealingWarmUpRestarts
     _partial_: true
     T_0 : 300

@@ -85,9 +85,8 @@ class ResNet(nn.Module):
         for i,stage in enumerate(self.stages):
             stage= stage.to(x.device)
             x = stage(x)
-
         return x
-
+ 
     def _make_stage(self, in_channels, out_channels, num_blocks, first_block_stride):
         blocks = [self.block_cls(in_channels if i==0 else out_channels ,out_channels, self.norm, strides= first_block_stride if  i == 0 else (1, 1)) for i in range(num_blocks)]
         return nn.Sequential(*blocks)

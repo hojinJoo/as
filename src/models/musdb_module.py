@@ -34,7 +34,8 @@ class AudioSlotModule(LightningModule):
         net: torch.nn.Module,
         optimizer: torch.optim.Optimizer,
         scheduler: torch.optim.lr_scheduler,
-        name: str = "audioslot"
+        name: str = "musdb",
+        sources : List[str] = ["vocals", "drums", "bass", "other"]
     ):
         super().__init__()
         # this line allows to access init params with 'self.hparams' attribute
@@ -43,10 +44,11 @@ class AudioSlotModule(LightningModule):
         
         
         self.net = net
-
+        self.sources = sources
         # loss function
         self.criterion = torch.nn.MSELoss()
-
+        self.recon_loss = torch.nn.MSELoss()
+        
         # metric objects for calculating and averaging accuracy across batches
         self.train_snr = SISNREvaluator()
         self.val_snr = SISNREvaluator()
@@ -55,7 +57,7 @@ class AudioSlotModule(LightningModule):
         # for averaging loss across batches
         self.train_loss = MeanMetric()
         self.val_loss = MeanMetric()
-
+        
         
         # for tracking best so far validation accuracy
         self.train_snr_best = MaxMetric()
@@ -115,13 +117,12 @@ class AudioSlotModule(LightningModule):
         self.val_snr_best.reset()
 
     def model_step(self, batch: Any,train:bool=False):
+        gt = torch.stack([batch[source] for source in self.sources], dim=0)
         
-        source1 = batch["source_1"]
-        source2 = batch["source_2"]
-        mixture = batch["source_1"] + batch["source_2"]
-        gt = torch.stack((source1, source2), dim=1)
+        mixture = torch.sum(torch.stack([batch[source] for source in self.sources], dim=0),dim=0)
+        
         B,n_src,F,T = gt.size()
-
+        
         pred,attention = self.forward(mixture,train=train) 
         
         indices = self.matcher(gt, pred)
@@ -133,7 +134,7 @@ class AudioSlotModule(LightningModule):
         matching_gt = gt[gt_idx].view(B,n_src,F,T)
 
         
-        loss = self.criterion( matching_gt,matching_pred)
+        loss = self.criterion( matching_gt,matching_pred) + self.recon_loss(mixture,pred)
         outs = {"gt" : matching_gt, "pred" : matching_pred, "attention" : attention, "pred_index" : pred_idx, "gt_index" : gt_idx}
         
         return loss,outs,pred
@@ -189,70 +190,71 @@ class AudioSlotModule(LightningModule):
         # batch : [1,F,T]
         # print(batch["mixture"].size())
         # print(f"source {batch['source_1'].size()}")
-        _,_,F,T = batch["mixture"].size()
-        n_src = 2
-        segment_step = self.hparams.net.input_ft[1]
-        prediction = torch.zeros(1,n_src,F,T)
-        loss = 0
-        for segment in range(0,T,segment_step):
-            source1 = batch["source_1"].squeeze(0)[:,:,segment:segment+segment_step]
-            source2 = batch["source_2"].squeeze(0)[:,:,segment:segment+segment_step]
-            mixture = source1 + source2
-            mixture_original_size = mixture.size()
-            if mixture_original_size[2] != segment_step :
-                # print("mixture size",mixture.size())
-                # print(f"segment {segment_step}")
-                source1 = torch.cat((source1,torch.zeros(source1.size(0),source1.size(1),segment_step-source1.size(2)).to(source1.device) ),dim=2)
-                source2 = torch.cat((source2,torch.zeros(source2.size(0),source2.size(1),segment_step-source2.size(2)).to(source2.device)),dim=2)
-                mixture = torch.cat((mixture,torch.zeros(mixture.size(0),mixture.size(1),segment_step-mixture.size(2)).to(mixture.device)),dim=2)
+        return 
+        # _,_,F,T = batch["mixture"].size()
+        # n_src = 2
+        # segment_step = self.hparams.net.input_ft[1]
+        # prediction = torch.zeros(1,n_src,F,T)
+        # loss = 0
+        # for segment in range(0,T,segment_step):
+        #     source1 = batch["source_1"].squeeze(0)[:,:,segment:segment+segment_step]
+        #     source2 = batch["source_2"].squeeze(0)[:,:,segment:segment+segment_step]
+        #     mixture = source1 + source2
+        #     mixture_original_size = mixture.size()
+        #     if mixture_original_size[2] != segment_step :
+        #         # print("mixture size",mixture.size())
+        #         # print(f"segment {segment_step}")
+        #         source1 = torch.cat((source1,torch.zeros(source1.size(0),source1.size(1),segment_step-source1.size(2)).to(source1.device) ),dim=2)
+        #         source2 = torch.cat((source2,torch.zeros(source2.size(0),source2.size(1),segment_step-source2.size(2)).to(source2.device)),dim=2)
+        #         mixture = torch.cat((mixture,torch.zeros(mixture.size(0),mixture.size(1),segment_step-mixture.size(2)).to(mixture.device)),dim=2)
             
-            loss,outs,slots = self.model_step({"mixture" : mixture, "source_1" : source1, "source_2" : source2},train=False)
-            loss += loss
-            pred_idx = outs["pred_index"]
-            gt_idx = outs["gt_index"]
+        #     loss,outs,slots = self.model_step({"mixture" : mixture, "source_1" : source1, "source_2" : source2},train=False)
+        #     loss += loss
+        #     pred_idx = outs["pred_index"]
+        #     gt_idx = outs["gt_index"]
             
-            sorted_gt_idx,sorted_pred_idx = self.find_pred_idx_original_gt(gt_idx, pred_idx)
-            sorted_matching_pred = slots[sorted_pred_idx].unsqueeze(0)
+        #     sorted_gt_idx,sorted_pred_idx = self.find_pred_idx_original_gt(gt_idx, pred_idx)
+        #     sorted_matching_pred = slots[sorted_pred_idx].unsqueeze(0)
             
-            if mixture_original_size[2] != segment_step :
-                prediction[:,:,:,segment:] = sorted_matching_pred[:,:,:,:mixture_original_size[2]]
-            else :
-                prediction[:,:,:,segment:segment+segment_step] = sorted_matching_pred
+        #     if mixture_original_size[2] != segment_step :
+        #         prediction[:,:,:,segment:] = sorted_matching_pred[:,:,:,:mixture_original_size[2]]
+        #     else :
+        #         prediction[:,:,:,segment:segment+segment_step] = sorted_matching_pred
 
-        gt = torch.stack((batch["source_1"].squeeze(0),batch["source_2"].squeeze(0)),dim=1).cpu()
-        prediction = torch.pow(prediction,10/3)
-        mask = self.ibm_mask(prediction)
+        # gt = torch.stack((batch["source_1"].squeeze(0),batch["source_2"].squeeze(0)),dim=1).cpu()
+        # prediction = torch.pow(prediction,10/3)
+        # mask = self.ibm_mask(prediction)
         
   
-        model_input = (batch['source_1'] + batch['source_2']).squeeze(0).cpu()
+        # model_input = (batch['source_1'] + batch['source_2']).squeeze(0).cpu()
         
-        prediction =  model_input * prediction
-        # update and log metrics
-        gt_vis = gt.clone().detach().squeeze(0).cpu().numpy()
-        matching_pred_vis = prediction.clone().detach().squeeze(0).cpu().numpy()
+        # prediction =  model_input * prediction
+        # # update and log metrics
+        # gt_vis = gt.clone().detach().squeeze(0).cpu().numpy()
+        # matching_pred_vis = prediction.clone().detach().squeeze(0).cpu().numpy()
         
-        os.makedirs(os.path.join(self.logger.save_dir,'test'),exist_ok=True)
-        test_vis(gt_vis,matching_pred_vis,self.logger.save_dir,'test',str(batch_idx))
+        # os.makedirs(os.path.join(self.logger.save_dir,'test'),exist_ok=True)
+        # test_vis(gt_vis,matching_pred_vis,self.logger.save_dir,'test',str(batch_idx))
             
         
 
-        self.val_loss(loss)
-        self.log("val/loss", self.val_loss, on_step=False, on_epoch=True, prog_bar=True)
+        # self.val_loss(loss)
+        # self.log("val/loss", self.val_loss, on_step=False, on_epoch=True, prog_bar=True)
 
-        snr = self.val_snr.evaluate(prediction,gt)
-        # self.log("val/acc", self.val_acc, on_step=False, on_epoch=True, prog_bar=True)
+        # snr = self.val_snr.evaluate(prediction,gt)
+        # # self.log("val/acc", self.val_acc, on_step=False, on_epoch=True, prog_bar=True)
 
-        self.log("val/snr", snr, on_step=True, on_epoch=True, prog_bar=True,sync_dist=True)
-        self.log("val/snr_best", self.val_snr_best.compute(), on_step=False, on_epoch=True, prog_bar=True,sync_dist=True)
-        return {"loss": loss}
+        # self.log("val/snr", snr, on_step=True, on_epoch=True, prog_bar=True,sync_dist=True)
+        # self.log("val/snr_best", self.val_snr_best.compute(), on_step=False, on_epoch=True, prog_bar=True,sync_dist=True)
+        # return {"loss": loss}
 
-    def validation_epoch_end(self, outputs: List[Any]):
-        snr = self.val_snr.get_results()
-        self.val_snr.reset()
+    # def validation_epoch_end(self, outputs: List[Any]):
+        # snr = self.val_snr.get_results()
+        # self.val_snr.reset()
         
-        self.val_snr_best(snr)
-        self.log("val/snr", snr, on_step=False, on_epoch=True, prog_bar=True,sync_dist=True)
-        self.log("val/snr_best", self.val_snr_best.compute(), on_step=False, on_epoch=True, prog_bar=True,sync_dist=True)
+        # self.val_snr_best(snr)
+        # self.log("val/snr", snr, on_step=False, on_epoch=True, prog_bar=True,sync_dist=True)
+        # self.log("val/snr_best", self.val_snr_best.compute(), on_step=False, on_epoch=True, prog_bar=True,sync_dist=True)
         
         
         # log `val_acc_best` as a value through `.compute()` method, instead of as a metric object
@@ -270,10 +272,10 @@ class AudioSlotModule(LightningModule):
     def test_step(self, batch: Any, batch_idx: int):
         # train과 다르게 [B,T,F] 형태로 들어옴
         # for 
-        self.validation_step(batch, batch_idx)
-
-    def test_epoch_end(self, outputs: List[Any]):
-        self.validation_epoch_end(outputs)
+        # self.validation_step(batch, batch_idx)
+        return
+    # def test_epoch_end(self, outputs: List[Any]):
+        # self.validation_epoch_end(outputs)
 
     def configure_optimizers(self):
         """Choose what optimizers and learning-rate schedulers to use in your optimization.
@@ -284,7 +286,7 @@ class AudioSlotModule(LightningModule):
         """
         optimizer = self.hparams.optimizer(params=self.parameters())
         if self.hparams.scheduler is not None:
-            # scheduler = CosineAnnealingWarmUpRestarts(optimizer=optimizer,T_0=self.hparams.scheduler.scheduler.T_0)
+            scheduler = self.hparams.scheduler.scheduler(optimizer=optimizer)
             # def lr_lambda(step):
             #     if step < self.hparams.scheduler.warmup_steps:
             #         warmup_factor = float(step) / float(
@@ -299,7 +301,7 @@ class AudioSlotModule(LightningModule):
 
             #     return warmup_factor * decay_factor
             
-            scheduler = self.hparams.scheduler.scheduler(optimizer=optimizer,gamma=self.hparams.scheduler.gamma)
+            # scheduler = self.hparams.scheduler.scheduler(optimizer=optimizer,gamma=self.hparams.scheduler.gamma)
             return {
                 "optimizer": optimizer,
                 "lr_scheduler": {
