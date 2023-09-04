@@ -6,6 +6,13 @@ from collections import defaultdict
 import torch
 import torchaudio
 from torch.utils.data import Dataset
+from scipy import signal
+from src.utils.transforms import stft
+import numpy as np
+
+
+from scipy import signal
+
 
 
 class Libri2Mix(Dataset):
@@ -13,40 +20,39 @@ class Libri2Mix(Dataset):
         self,
         metadata_path: str = "/workspace/data/Libri2Mix/wav16k/max/metadata/mixture_train-360_mix_clean.csv",
         crop_size : int = 8000,
-        test : bool = False
+        test : bool = False,
+        n_fft : int = 512,
+        win_length : int = 512,
+        hop_length : int = 125
     ):
         super().__init__()
         self.meta_data = pd.read_csv(metadata_path,encoding="ms932",sep=",")
         self.crop_size = crop_size
         self.test = test
         self.num_files = len(self.meta_data)
-
+        self.n_fft = n_fft
+        self.win_length = win_length
+        self.hop_length = hop_length
 
 
     def __getitem__(self, index):
         if self.test :
             mixtureID,mixture_path,source_1_path,source_2_path,length = self.meta_data.values[index]
             
-            # mixture_path = mixture_path.replace("/media","/media/NAS3/CIPLAB/users/hj")
-            # source_1_path = source_1_path.replace("/media","/media/NAS3/CIPLAB/users/hj")
-            # source_2_path = source_2_path.replace("/media","/media/NAS3/CIPLAB/users/hj")
-            
+
             mixture_wav,sample_rate = torchaudio.load(mixture_path)
             source_1,sample_rate = torchaudio.load(source_1_path)
             source_2,sample_rate = torchaudio.load(source_2_path)
             
-            mixture = torch.abs(torch.stft(mixture_wav, n_fft=512, win_length=512,
-                                hop_length=125, return_complex=True))
-            source_1 = torch.abs(torch.stft(source_1, n_fft=512, win_length=512,
-                                    hop_length=125, return_complex=True))
-            source_2 = torch.abs(torch.stft(source_2, n_fft=512, win_length=512,
-                                    hop_length=125, return_complex=True))             
-            mixture = torch.pow(mixture,0.3)
-            source_1 = torch.pow(source_1,0.3)
-            source_2 = torch.pow(source_2,0.3)
+            original_length = mixture_wav.size(1)
             
             
-            sample = {"mixture": mixture, "source_1": source_1, "source_2": source_2}
+            mixture = stft(mixture_wav,fs=sample_rate,window_length=self.win_length,nfft=self.n_fft,hop_length=self.hop_length)
+            source_1 = stft(source_1,fs=sample_rate,window_length=self.win_length,nfft=self.n_fft,hop_length=self.hop_length)
+            source_2 = stft(source_2,fs=sample_rate,window_length=self.win_length,nfft=self.n_fft,hop_length=self.hop_length)
+            
+            
+            sample = {"mixture": mixture, "source_1": source_1, "source_2": source_2,"original_length":original_length, "mix_id": mixtureID}
             
             return sample
             
@@ -66,14 +72,11 @@ class Libri2Mix(Dataset):
         mixture_wav = mixture_wav[crop_idx:crop_idx + self.crop_size]
         source_1 = source_1[crop_idx:crop_idx + self.crop_size]
         source_2 = source_2[crop_idx:crop_idx + self.crop_size]
-        
-        mixture = torch.abs(torch.stft(mixture_wav, n_fft=512, win_length=512,
-                                hop_length=125, return_complex=True))
-        source_1 = torch.abs(torch.stft(source_1, n_fft=512, win_length=512,
-                                hop_length=125, return_complex=True))
-        source_2 = torch.abs(torch.stft(source_2, n_fft=512, win_length=512,
-                                hop_length=125, return_complex=True))             
-        
+                    
+        mixture = torch.abs(stft(mixture_wav,fs=sample_rate,window_length=self.win_length,nfft=self.n_fft,hop_length=self.hop_length))
+        source_1 = torch.abs(stft(source_1,fs=sample_rate,window_length=self.win_length,nfft=self.n_fft,hop_length=self.hop_length))
+        source_2 = torch.abs(stft(source_2,fs=sample_rate,window_length=self.win_length,nfft=self.n_fft,hop_length=self.hop_length))
+
         mixture = torch.pow(mixture,0.3)
         source_1 = torch.pow(source_1,0.3)
         source_2 = torch.pow(source_2,0.3)
@@ -86,28 +89,40 @@ class Libri2Mix(Dataset):
         return self.num_files
 
 if __name__ =="__main__" :  
-    a = Libri2Mix("/media/NAS3/CIPLAB/users/hj/Libri2Mix/mixture_test_mix_clean_metadata.csv",test=True)
+    
+    a = Libri2Mix("/media/ssd1/users/hj/Libri2Mix/mixture_test_mix_clean_metadata_in_ssd.csv",test=True)
     mixture = a[0]['mixture']
-    s1 = a[0]['source_1']
-    s2 = a[0]['source_2']
+    s1 = a[0]['source_1'].squeeze(0)
+    s2 = a[0]['source_2'].squeeze(0)
+    original_length = a[0]['original_length']
+    print(f"original length : {a[0]['original_length']}")
+    print(f"mixture : {mixture.shape}")
+    to_tensor = mixture
+    print(f"to tensor dtype : {to_tensor.dtype}")
+    print(f"to tensor size : {to_tensor.size()}")
+    print(f"abs dtype : {torch.abs(to_tensor).dtype}")
+    print(f"abs size : {torch.abs(to_tensor).size()}")
+    # print(f"to tensor view as real : {torch.view_as_real(to_tensor).size()}")
     
-    gt = torch.cat((s1.unsqueeze(0),s2.unsqueeze(0)),dim=1)
     
-    ibm = (gt == torch.max(gt, dim=1, keepdim=True).values).float()
-    print(ibm.size())
-    ibm = ibm / torch.sum(ibm, dim=1, keepdim=True)
-    print(ibm.size())
-    ibm[ ibm <= 0.5] = 0
-    masks = []
-    for i in range(2):
-        mask = ibm[:, i, :, :]
-        masks.append(mask)
+    # torchaudio.save("/workspace/as/test.wav",torch.from_numpy(to_np),16000)
     
-    print((ibm==0).sum())
-    print((ibm==1).sum())
+    stacked = torch.stack([s1,s2],dim=0)
+    stacked_wav = torch.from_numpy(istft(stacked,16000,512,512,125,original_length=83120))
+    print(f"staked wav  : {stacked_wav.shape}")
     
-    aa = ibm * mixture
-    print(aa.size())
+    to_tensor_1 = s1.unsqueeze(0)
+    to_np_1 = torch.from_numpy(istft(to_tensor_1.numpy(),16000,512,512,125,original_length=83120))
+    
+    # torchaudio.save("/workspace/as/test_1.wav",torch.from_numpy(to_np_1),16000)
+    
+    to_tensor_2 = s2.unsqueeze(0)
+    to_np_2 = istft(to_tensor_2.numpy(),16000,512,512,125,original_length=83120)
+    # torchaudio.save("/workspace/as/test_2.wav",torch.from_numpy(to_np_2),16000)
+    print(f"same : {torch.sum(stacked_wav[0,:] == to_np_1)}")
+    
+    
+    
     # print(mixture[masks[0]].size())
     # print(ibm.size())
     # print(gt.size())

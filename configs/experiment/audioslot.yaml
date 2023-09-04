@@ -16,28 +16,26 @@ defaults:
 tags: ["audio_slot", "libri2mix"]
 
 
-# ckpt_path : /workspace/as/logs/train/runs/libri2mix_audio_slot/s20_step_epoch/checkpoints/epoch=101_train_loss=0.0327.ckpt
 
 
 seed: 12345
 
 trainer:
   min_epochs: 10
-  max_epochs: 378
+  max_epochs: 380
   gradient_clip_val: 0.5
+
 model:
   optimizer:
     lr: 0.0
-  # net:
-  #   lin1_size: 128
-  #   lin2_size: 256
-  #   lin3_size: 64
 
 train : True
 
+
+
 data:
   #r1 : 36
-  batch_size: 12
+  batch_size: 36
 
 logger:
   wandb:
@@ -50,3 +48,4 @@ hydra :
       file:
         filename: ${paths.output_dir}/${hydra.job.name}.log
 
+# ckpt_path : /workspace/as/logs/train/runs/libri2mix_audio_slot/r1_1000_1e-4/checkpoints/epoch=991_train_loss=0.0130.ckpt

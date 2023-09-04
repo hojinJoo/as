@@ -4,5 +4,9 @@ train_metadata_path: /media/ssd1/users/hj/Libri2Mix/mixture_train-360_mix_clean_
 test_metadata_path: /media/ssd1/users/hj/Libri2Mix/mixture_test_mix_clean_metadata_in_ssd.csv
 crop_size: 8000
 batch_size: 64
-num_workers: 4
+num_workers: 12
 pin_memory: False
+n_fft : 512
+hop_length : 125
+win_length : 512
+sample_rate : 16000

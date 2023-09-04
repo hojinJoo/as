@@ -13,6 +13,8 @@ from pytorch_lightning.utilities import rank_zero_only
 from utils.evaluator import SISNREvaluator
 from src.utils.audio_vis import vis_compare,vis_slots,vis_attention,test_vis
 from src.utils.schedular import CosineAnnealingWarmUpRestarts
+from src.utils.write_wav import write_wav
+from src.utils.transforms import istft
 
 class AudioSlotModule(LightningModule):
     """Example of LightningModule for MNIST classification.
@@ -34,7 +36,8 @@ class AudioSlotModule(LightningModule):
         net: torch.nn.Module,
         optimizer: torch.optim.Optimizer,
         scheduler: torch.optim.lr_scheduler,
-        name: str = "audioslot"
+        name: str = "audioslot",
+        istft : Any = None
     ):
         super().__init__()
         # this line allows to access init params with 'self.hparams' attribute
@@ -186,17 +189,30 @@ class AudioSlotModule(LightningModule):
             
         
     def validation_step(self, batch: Any, batch_idx: int):
+        # input : complex64
         # batch : [1,F,T]
-        # print(batch["mixture"].size())
-        # print(f"source {batch['source_1'].size()}")
-        _,_,F,T = batch["mixture"].size()
+        sample = batch
+        original_length = sample["original_length"]
+        
+        _,_,F,T = sample["mixture"].size()
+        source1_original = sample["source_1"].squeeze(0)
+        source2_original = sample["source_2"].squeeze(0)
+        model_input = source1_original + source2_original # [1,F,T]
+        
+        
         n_src = 2
         segment_step = self.hparams.net.input_ft[1]
         prediction = torch.zeros(1,n_src,F,T)
         loss = 0
+        
+        #pre-process
+        s1 = torch.pow(torch.abs(sample["source_1"].squeeze(0)),0.3) # [1,F,T]
+        s2 = torch.pow(torch.abs(sample["source_2"].squeeze(0)),0.3)
+        
         for segment in range(0,T,segment_step):
-            source1 = batch["source_1"].squeeze(0)[:,:,segment:segment+segment_step]
-            source2 = batch["source_2"].squeeze(0)[:,:,segment:segment+segment_step]
+            # pre-process
+            source1 = s1[:,:,segment:segment+segment_step]
+            source2 = s2[:,:,segment:segment+segment_step]
             mixture = source1 + source2
             mixture_original_size = mixture.size()
             if mixture_original_size[2] != segment_step :
@@ -219,39 +235,40 @@ class AudioSlotModule(LightningModule):
             else :
                 prediction[:,:,:,segment:segment+segment_step] = sorted_matching_pred
 
-        gt = torch.stack((batch["source_1"].squeeze(0),batch["source_2"].squeeze(0)),dim=1).cpu()
+        gt = torch.stack((source1_original,source2_original),dim=1).cpu() # [1,2,F,T]
+        gt = istft(gt,fs=self.hparams.istft.sample_rate,window_length=self.hparams.istft.win_length,nfft=self.hparams.istft.n_fft,hop_length=self.hparams.istft.hop_length,original_length=original_length) # [1,2,T]
+        
         prediction = torch.pow(prediction,10/3)
-        mask = self.ibm_mask(prediction)
+        mask = self.ibm_mask(prediction) # [1,2,F,T]
         
-  
-        model_input = (batch['source_1'] + batch['source_2']).squeeze(0).cpu()
+
+        prediction =  model_input.cpu() * mask # dtype : complex64, size : [1,2,F,T]
         
-        prediction =  model_input * prediction
-        # update and log metrics
-        gt_vis = gt.clone().detach().squeeze(0).cpu().numpy()
-        matching_pred_vis = prediction.clone().detach().squeeze(0).cpu().numpy()
+        # dtype : float32 size : [1,2,T]    
+        prediction = istft(prediction,fs=self.hparams.istft.sample_rate,window_length=self.hparams.istft.win_length,nfft=self.hparams.istft.n_fft,hop_length=self.hparams.istft.hop_length,original_length=original_length)
+        
         
         os.makedirs(os.path.join(self.logger.save_dir,'test'),exist_ok=True)
-        test_vis(gt_vis,matching_pred_vis,self.logger.save_dir,'test',str(batch_idx))
+        if self.global_rank == 0 and self.local_rank == 0 and batch_idx % 100 == 0:
+            write_wav(prediction.clone().detach().cpu(),os.path.join(self.logger.save_dir,'test'),batch["mix_id"][0])
             
         
-
+        
+        
         self.val_loss(loss)
         self.log("val/loss", self.val_loss, on_step=False, on_epoch=True, prog_bar=True)
-
+        
         snr = self.val_snr.evaluate(prediction,gt)
-        # self.log("val/acc", self.val_acc, on_step=False, on_epoch=True, prog_bar=True)
-
         self.log("val/snr", snr, on_step=True, on_epoch=True, prog_bar=True,sync_dist=True)
-        self.log("val/snr_best", self.val_snr_best.compute(), on_step=False, on_epoch=True, prog_bar=True,sync_dist=True)
+        
         return {"loss": loss}
 
     def validation_epoch_end(self, outputs: List[Any]):
         snr = self.val_snr.get_results()
-        self.val_snr.reset()
+        
         
         self.val_snr_best(snr)
-        self.log("val/snr", snr, on_step=False, on_epoch=True, prog_bar=True,sync_dist=True)
+        # self.log("val/snr", snr, on_step=False, on_epoch=True, prog_bar=True,sync_dist=True)
         self.log("val/snr_best", self.val_snr_best.compute(), on_step=False, on_epoch=True, prog_bar=True,sync_dist=True)
         
         
@@ -263,8 +280,8 @@ class AudioSlotModule(LightningModule):
         # ideal binary mask
         # sources : B,2,F,T
         ibm = (sources == torch.max(sources, dim=1, keepdim=True).values).float()
-        ibm = ibm / torch.sum(ibm, dim=1, keepdim=True)
-        ibm[ ibm <= 0.5] = 0
+        # ibm = ibm / torch.sum(ibm, dim=1, keepdim=True)
+        # ibm[ ibm <= 0.5] = 0
         return ibm
         
     def test_step(self, batch: Any, batch_idx: int):
@@ -299,7 +316,7 @@ class AudioSlotModule(LightningModule):
 
             #     return warmup_factor * decay_factor
             
-            scheduler = self.hparams.scheduler.scheduler(optimizer=optimizer,gamma=self.hparams.scheduler.gamma)
+            scheduler = self.hparams.scheduler.scheduler(optimizer=optimizer)
             return {
                 "optimizer": optimizer,
                 "lr_scheduler": {

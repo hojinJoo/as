@@ -42,6 +42,10 @@ class Libri2MixDataModule(LightningDataModule):
         batch_size: int = 64,
         num_workers: int = 0,
         pin_memory: bool = False,
+        n_fft : int = 512,
+        win_length : int = 512,
+        hop_length : int = 125,
+        sample_rate : int = 16000,
     ):
         super().__init__()
 
@@ -74,12 +78,18 @@ class Libri2MixDataModule(LightningDataModule):
         self.data_train = Libri2Mix(
             metadata_path=self.train_metadata_path,
             crop_size=self.crop_size,
-            test=False
+            test=False,
+            n_fft=self.hparams.n_fft,
+            win_length=self.hparams.win_length,
+            hop_length=self.hparams.hop_length
         )
         self.data_val = Libri2Mix(
             metadata_path=self.test_metadata_path,
             crop_size=self.crop_size,
-            test=True
+            test=True,
+            n_fft=self.hparams.n_fft,
+            win_length=self.hparams.win_length,
+            hop_length=self.hparams.hop_length
         )
         
         
