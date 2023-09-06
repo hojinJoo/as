@@ -1,7 +1,9 @@
 _target_: src.data.musdb_datamodule.MusDBDataModule
 name: "musdb"
 metadata_path : /media/ssd1/users/hj/musdb18hq/musdb_wav.json
-segment : 0.1
+segment : 4
 sample_rate : 44100
 num_workers: 12
-
+n_fft : 4096
+win_length : 1024
+hop_length : 1024

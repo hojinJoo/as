@@ -15,19 +15,19 @@ scheduler:
     T_0 : 1000
     T_mult : 1
     T_up : 500
-    gamma : 0.5
+    gamma : 0.8
     eta_max : 0.0001
   
 
 net:
   _target_: src.models.components.audioSlots.audioslot.AudioSlot
-  num_slots : 8
-  num_iterations : 4
+  num_slots : 6
+  num_iterations : 6
   num_attn_heads : 1
   slot_dim : 512
   mlp_hid_dim : 1024
   eps : 1e-8
   num_fourier_bases : 16
-  input_ft :  [2049, 212] # after resnet : 257 27
+  input_ft :  [2049,174] # after resnet : 33 1
   dec_mlp_hid_dim : 256
 

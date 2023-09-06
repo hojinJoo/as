@@ -67,12 +67,16 @@ class AudioSlotModule(LightningModule):
         # pred: B,2,F,T
         # gt: B,2,F,T
         batch_size, n_gt, F, T = gt.size()
+        # print(f"gt size : {gt.size()}")
         _, n_slots, _, _ = pred.size()
+        # print(f"pred size : {pred.size()}")
         idx = []    
         for i in range(batch_size):
+            
             gt_frame = gt[i].view(n_gt, -1)
             pred_frame = pred[i].view(n_slots, -1)
-
+            
+            
             cost_matrix = torch.sum((gt_frame[None,:] - pred_frame[ :,None]) ** 2, dim=2)
             cost_matrix_np = cost_matrix.detach().cpu().numpy()
             nan = np.isnan(cost_matrix_np).any()
@@ -117,11 +121,14 @@ class AudioSlotModule(LightningModule):
         self.val_snr_best.reset()
 
     def model_step(self, batch: Any,train:bool=False):
-        gt = torch.stack([batch[source] for source in self.sources], dim=0)
         
-        mixture = torch.sum(torch.stack([batch[source] for source in self.sources], dim=0),dim=0)
+        gt = torch.stack([batch[source] for source in self.sources], dim=1) # [B,n_src,F,T]
+        mixture = torch.sum(gt,dim=1) # [B,F,T]
         
-        B,n_src,F,T = gt.size()
+        B,n_src,F,T = gt.size() 
+        # gt size : B,n_srcs,F,T
+        # pred size : B,n_slots,F,T
+
         
         pred,attention = self.forward(mixture,train=train) 
         
@@ -133,8 +140,8 @@ class AudioSlotModule(LightningModule):
         matching_pred = pred[pred_idx].view(B,n_src,F,T).type(torch.float32)
         matching_gt = gt[gt_idx].view(B,n_src,F,T)
 
-        
-        loss = self.criterion( matching_gt,matching_pred) + self.recon_loss(mixture,pred)
+        # print(f"torch.sum(matching_pred,dim=1) : {torch.sum(matching_pred,dim=1).size()}")
+        loss = self.criterion( matching_gt,matching_pred) +  self.recon_loss(mixture,torch.sum(matching_pred,dim=1))
         outs = {"gt" : matching_gt, "pred" : matching_pred, "attention" : attention, "pred_index" : pred_idx, "gt_index" : gt_idx}
         
         return loss,outs,pred
@@ -169,7 +176,7 @@ class AudioSlotModule(LightningModule):
             
             vis_compare(gt_vis,matching_pred_vis,self.logger.save_dir,str(self.current_epoch+1),outs["gt_index"],outs["pred_index"])
             vis_slots(slots_vis,self.logger.save_dir,str(self.current_epoch+1))
-            vis_attention(attention_vis,self.logger.save_dir,str(self.current_epoch+1))
+            # vis_attention(attention_vis,self.logger.save_dir,str(self.current_epoch+1))
                 
         return {"loss": loss}
     

@@ -44,7 +44,10 @@ class MusDBDataModule(LightningDataModule):
         sources : [str] = ["vocals", "drums", "bass", "other"],
         num_workers: int = 12,
         pin_memory: bool = False,
-        normalize : bool = True
+        normalize : bool = False,
+        n_fft : int = 4096,
+        win_length : int = 1024,
+        hop_length : int = 1024
     ):
         super().__init__()
 
@@ -65,6 +68,10 @@ class MusDBDataModule(LightningDataModule):
         self.sample_rate = sample_rate
         self.normalize = normalize
         self.num_workers = num_workers
+        self.n_fft = n_fft
+        self.win_length = win_length
+        self.hop_length = hop_length
+        
         
     def prepare_data(self):
         """Download data if needed.
@@ -93,14 +100,22 @@ class MusDBDataModule(LightningDataModule):
             segment=self.segment,
             sources=self.sources,
             sample_rate=self.sample_rate,
-            normalize=self.normalize
+            normalize=self.normalize,
+            n_fft=self.n_fft,
+            win_length=self.win_length,
+            hop_length=self.hop_length,
+            mode="train"
         )
         self.data_val = MusDB(
             metadata=metadata_val,
             segment=self.segment,
             sources=self.sources,
             sample_rate=self.sample_rate,
-            normalize=self.normalize
+            normalize=self.normalize,
+            n_fft=self.n_fft,
+            win_length=self.win_length,
+            hop_length=self.hop_length,
+            mode="val"
         )
         
         
@@ -118,7 +133,7 @@ class MusDBDataModule(LightningDataModule):
     def val_dataloader(self):
         return DataLoader(
             dataset=self.data_val,
-            batch_size=self.hparams.batch_size,
+            batch_size=1,
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
             shuffle=True,

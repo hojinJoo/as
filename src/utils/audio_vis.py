@@ -13,38 +13,62 @@ def vis_compare(matching_gt, matching_pred,log_dir,epoch,gt_idx,pred_idx):
     gt_idx : tuple(0,1)
     """
     B, n_src, F, T = matching_gt.shape
+    _,n_slots,_,_ = matching_pred.shape
     
-    fig, axes = plt.subplots(B, 4, figsize=(12, 3*B))
+    
+    fig, axes = plt.subplots(B, 2 * n_src, figsize=(12, 3*B))
     matching_pred[matching_pred < 0] =0
+    if B > 1 : 
+        for i in range(B):
+            for j in range(n_src):
+                # GT 어텐션 맵 그리기
+                gt_value = 20 * np.log10(matching_gt[i,j] + 1e-8)
+                gt_min = gt_value.min()
+                gt_max = gt_value.max()
+                
+                gt = axes[i,j*2].imshow(gt_value, origin="lower", aspect="auto",vmin=gt_min,vmax=gt_max)
+                axes[i, j*2].set_title(f'GT {j+1}')
+                
+                color_bar_gt = fig.colorbar(gt, ax=axes[i,j*2])
+                
+                # Prediction 어텐션 맵 그리기
+                pred = axes[i, j*2+1].imshow((20 * np.log10(matching_pred[i,j] + 1e-8)), origin="lower", aspect="auto",vmin=gt_min,vmax=gt_max)
+                axes[i, j*2+1].set_title(f'Slots {pred_idx[1][2*i + j]+1}')
+
+                color_bar_pred = fig.colorbar(pred, ax=axes[i,j*2+1])
+                
+                # 축 숨기기
+                axes[i, j*2].axis('off')
+                axes[i, j*2+1].axis('off')
+        for i in range(B, axes.shape[0]):
+            for j in range(n_slots):
+                axes[i, j].axis('off')
     
-    for i in range(B):
+    else : 
         for j in range(n_src):
             # GT 어텐션 맵 그리기
-            gt_value = 20 * np.log10(matching_gt[i,j] + 1e-8)
+            gt_value = 20 * np.log10(matching_gt[:,j].squeeze(0) + 1e-8)
+            
             gt_min = gt_value.min()
             gt_max = gt_value.max()
             
-            gt = axes[i,j*2].imshow(gt_value, origin="lower", aspect="auto",vmin=gt_min,vmax=gt_max)
-            axes[i, j*2].set_title(f'GT {j+1}')
+            gt = axes[j*2].imshow(gt_value, origin="lower", aspect="auto",vmin=gt_min,vmax=gt_max)
+            axes[ j*2].set_title(f'GT {j+1}')
             
-            color_bar_gt = fig.colorbar(gt, ax=axes[i,j*2])
+            color_bar_gt = fig.colorbar(gt, ax=axes[j*2])
             
             # Prediction 어텐션 맵 그리기
-            pred = axes[i, j*2+1].imshow((20 * np.log10(matching_pred[i,j] + 1e-8)), origin="lower", aspect="auto",vmin=gt_min,vmax=gt_max)
-            axes[i, j*2+1].set_title(f'Slots {pred_idx[1][2*i + j]+1}')
+            pred = axes[ j*2+1].imshow((20 * np.log10(matching_pred[:,j].squeeze(0) + 1e-8)), origin="lower", aspect="auto",vmin=gt_min,vmax=gt_max)
+            axes[ j*2+1].set_title(f'Slots {pred_idx[1][ j]+1}')
 
-            color_bar_pred = fig.colorbar(pred, ax=axes[i,j*2+1])
+            color_bar_pred = fig.colorbar(pred, ax=axes[j*2+1])
             
             # 축 숨기기
-            axes[i, j*2].axis('off')
-            axes[i, j*2+1].axis('off')
+            axes[ j*2].axis('off')
+            axes[ j*2+1].axis('off')
             
-            
-    # 빈 축 숨기기
-    for i in range(B, axes.shape[0]):
         for j in range(n_slots):
-            axes[i, j].axis('off')
-    
+            axes[j].axis('off')
     
     fig.tight_layout()
     # 그림판 저장
@@ -107,22 +131,30 @@ def vis_slots(all_preds,log_dir,epoch) :
     pred_fig, pred_axes = plt.subplots(B, n_slots, figsize=(12, 3*B))
     all_preds[all_preds < 0] =0
     # 배치별로 GT와 Prediction 어텐션 맵 그리기
-    for i in range(B):
+    
+    if B > 1 :
+        for i in range(B):
+            for j in range(n_slots):
+
+                pred = pred_axes[i,j].imshow((20 * np.log10(all_preds[i,j] + 1e-8)), origin="lower", aspect="auto",vmin=-160,vmax=10)
+                pred_axes[i, j].set_title(f'Slot {j+1}')
+                color_bar_pred = pred_fig.colorbar(pred, ax=pred_axes[i,j])
+                pred_axes[i, j].axis('off')
+        for i in range(B, pred_axes.shape[0]):
+            for j in range(n_slots):
+
+                pred_axes[i, j].axis('off')
+    else : 
         for j in range(n_slots):
-            
-
-            
-            pred = pred_axes[i,j].imshow((20 * np.log10(all_preds[i,j] + 1e-8)), origin="lower", aspect="auto",vmin=-160,vmax=10)
-            pred_axes[i, j].set_title(f'Slot {j+1}')
-            color_bar_pred = pred_fig.colorbar(pred, ax=pred_axes[i,j])
-            pred_axes[i, j].axis('off')
-
+            pred = pred_axes[j].imshow((20 * np.log10(all_preds[:,j].squeeze(0) + 1e-8)), origin="lower", aspect="auto",vmin=-160,vmax=10)
+            pred_axes[ j].set_title(f'Slot {j+1}')
+            color_bar_pred = pred_fig.colorbar(pred, ax=pred_axes[j])
+            pred_axes[ j].axis('off')
+        for j in range(n_slots):
+            pred_axes[j].axis('off')
 
     # 빈 축 숨기기
-    for i in range(B, pred_axes.shape[0]):
-        for j in range(n_slots):
-
-            pred_axes[i, j].axis('off')
+    
             
             
     pred_fig.tight_layout()
@@ -141,13 +173,19 @@ def vis_attention(attn,log_dir,epoch) :
     attn_mean = attn.mean(axis=1).transpose(0,2,1).reshape(B,N_slots,33,9) # (B,N_in,32,8)
     
     attn_fig, attn_axes = plt.subplots(B, N_slots, figsize=(12, 3*B))
-
-    for i in range(B):
+    if B > 1 :
+        for i in range(B):
+            for j in range(N_slots):
+                img = attn_mean[i,j]
+                attn_axes[i,j].imshow(img)
+                attn_axes[i, j].set_title(f'Slot {j+1}')
+                attn_axes[i, j].axis('off')
+    else : 
         for j in range(N_slots):
-            img = attn_mean[i,j]
-            attn_axes[i,j].imshow(img)
-            attn_axes[i, j].set_title(f'Slot {j+1}')
-            attn_axes[i, j].axis('off')
+            img = attn_mean[:,j].squeeze(0)
+            attn_axes[j].imshow(img)
+            attn_axes[ j].set_title(f'Slot {j+1}')
+            attn_axes[ j].axis('off')
             
     attn_fig.tight_layout()
     # 그림판 저장
