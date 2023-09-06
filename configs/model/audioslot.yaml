@@ -13,11 +13,11 @@ scheduler:
   scheduler: 
     _target_: src.utils.schedular.CosineAnnealingWarmUpRestarts
     _partial_: true
-    T_0 : 380
+    T_0 : 1000
     T_mult : 1
-    T_up : 5
+    T_up : 500
     gamma : 0.5
-    eta_max : 2e-4
+    eta_max : 0.0001
   
 
 net:

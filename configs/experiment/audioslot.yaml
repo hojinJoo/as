@@ -22,7 +22,7 @@ seed: 12345
 
 trainer:
   min_epochs: 10
-  max_epochs: 380
+  max_epochs: 1000
   gradient_clip_val: 0.5
 
 model:
