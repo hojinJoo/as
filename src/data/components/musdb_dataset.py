@@ -33,7 +33,8 @@ class MusDB(Dataset):
         mode : str = "train",
         n_fft : int = 4096,
         win_length : int = 1024,
-        hop_length : int = 1024
+        hop_length : int = 1024,
+        cac : bool = False
     ):
         super().__init__()
         
@@ -58,7 +59,7 @@ class MusDB(Dataset):
         self.n_fft = n_fft
         self.win_length = win_length
         self.hop_length = hop_length
-        
+        self.cac = cac
     def get_file(self,name,source):
         return os.path.join(self.data_path, self.mode ,name, source + ".wav")
     
@@ -79,7 +80,6 @@ class MusDB(Dataset):
             for source in self.sources:
                 file = self.get_file(name, source)
                 wav, _ = torchaudio.load(str(file), frame_offset=offset, num_frames=num_frames)
-                wav = wav.mean(dim=0, keepdim=True)
                 
                 if self.segment:
                     length = int(self.segment * self.samplerate)
@@ -87,9 +87,9 @@ class MusDB(Dataset):
                     wav = F.pad(wav, (0, length - wav.shape[-1]))
                     
                 wav = stft(wav,fs=self.samplerate,window_length=self.win_length,nfft=self.n_fft,hop_length=self.hop_length)
-                if self.mode == 'train':
-                    wav = torch.abs(wav)
+                
                 wav = wav.squeeze(0)
+            
                 # print(wav.size())
                 wavs[source] = wav
                 # wavs[]
@@ -110,15 +110,14 @@ if __name__ =="__main__" :
     with open(musdb_metadata, 'r') as f :
         metadata = json.load(f)
     metadata_train = {name : meta for name, meta in metadata.items()}
-    a = MusDB(metadata_train)
-    print(a[0])
+    a = MusDB(metadata_train,cac=True)
+    sample = a[0]
+    
     # print(a[0].keys())
     sources = ['vocals', 'drums', 'bass', 'other']
-    mix = torch.sum(torch.stack([a[0][source] for source in sources], dim=0), dim=0)
-    v = a[0]['vocals']
-    d = a[0]['drums']
-    b = a[0]['bass']
-    o = a[0]['other']
+    tmp = torch.stack([sample[source] for source in sources if source != 'vocals'], dim=1)
+    print(f'size : {tmp.size()}')
     # print(torch.sum(mix == v + d + b + o))
     # print(2049 * 212)
     # print(torch.stack([a[0][source] for source in sources], dim=0).size())
+    

@@ -47,7 +47,8 @@ class MusDBDataModule(LightningDataModule):
         normalize : bool = False,
         n_fft : int = 4096,
         win_length : int = 1024,
-        hop_length : int = 1024
+        hop_length : int = 1024,
+        cac : bool = False
     ):
         super().__init__()
 
@@ -71,7 +72,7 @@ class MusDBDataModule(LightningDataModule):
         self.n_fft = n_fft
         self.win_length = win_length
         self.hop_length = hop_length
-        
+        self.cac = cac
         
     def prepare_data(self):
         """Download data if needed.
@@ -104,7 +105,8 @@ class MusDBDataModule(LightningDataModule):
             n_fft=self.n_fft,
             win_length=self.win_length,
             hop_length=self.hop_length,
-            mode="train"
+            mode="train",
+            cac= self.cac
         )
         self.data_val = MusDB(
             metadata=metadata_val,
@@ -115,7 +117,8 @@ class MusDBDataModule(LightningDataModule):
             n_fft=self.n_fft,
             win_length=self.win_length,
             hop_length=self.hop_length,
-            mode="val"
+            mode="val",
+            cac= self.cac
         )
         
         

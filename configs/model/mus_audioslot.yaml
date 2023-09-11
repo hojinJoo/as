@@ -21,13 +21,16 @@ scheduler:
 
 net:
   _target_: src.models.components.audioSlots.audioslot.AudioSlot
-  num_slots : 6
-  num_iterations : 6
+  num_slots : 4
+  num_iterations : 2
   num_attn_heads : 1
   slot_dim : 512
   mlp_hid_dim : 1024
   eps : 1e-8
-  num_fourier_bases : 16
-  input_ft :  [2049,174] # after resnet : 33 1
+  num_fourier_bases : 32
+  input_ft :  [2049,45] # after resnet : 33 1
   dec_mlp_hid_dim : 256
+  cac : True
+  channels : 2
+  resnet : "101"
 

@@ -31,6 +31,7 @@ net:
   num_fourier_bases : 16
   input_ft :  [257,65]
   dec_mlp_hid_dim : 256
+  resnet : 34
 
 istft : 
   n_fft : 512
