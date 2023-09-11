@@ -36,6 +36,7 @@ class AudioSlotModule(LightningModule):
         scheduler: torch.optim.lr_scheduler,
         name: str = "musdb",
         sources : List[str] = ["vocals", "drums", "bass", "other"],
+        cac : bool = False
         
     ):
         super().__init__()
@@ -43,7 +44,7 @@ class AudioSlotModule(LightningModule):
         # also ensures init params will be stored in ckpt
         self.save_hyperparameters(logger=False)
         
-        
+        self.cac = cac
         self.net = net
         self.sources = sources
         # loss function
@@ -67,15 +68,15 @@ class AudioSlotModule(LightningModule):
     def matcher(self, gt: torch.Tensor, pred: torch.Tensor):
         # pred: B,2,F,T
         # gt: B,2,F,T
-        batch_size, n_gt, F, T = gt.size()
+        B,n_gt,C,F,T,_ = gt.size()
         # print(f"gt size : {gt.size()}")
-        _, n_slots, _, _ = pred.size()
+        _, n_slots, _, _,_,_ = pred.size()
         # print(f"pred size : {pred.size()}")
         idx = []    
-        for i in range(batch_size):
+        for i in range(B):
             
-            gt_frame = gt[i].view(n_gt, -1)
-            pred_frame = pred[i].view(n_slots, -1)
+            gt_frame = gt[i].reshape(n_gt, -1)
+            pred_frame = pred[i].reshape(n_slots, -1)
             
             
             cost_matrix = torch.sum((gt_frame[None,:] - pred_frame[ :,None]) ** 2, dim=2)
@@ -122,19 +123,21 @@ class AudioSlotModule(LightningModule):
         self.val_snr_best.reset()
 
     def model_step(self, batch: Any,train:bool=False):
+        # C : 2
         accompanient = torch.sum(torch.stack([batch[source] for source in self.sources if source != 'vocals'], dim=1),dim=1) # [B,C,F,T]
         vocal = batch['vocals'] # [B,C,F,T]
-
         gt = torch.stack((vocal,accompanient),dim=1) # [B,2,C,F,T]
         
-        
+        if self.cac : 
+            
+            gt = torch.view_as_real(gt)
+            
         
         mixture = accompanient + vocal        
         
-        B,C,n_src,F,T = gt.size() 
-        # gt size : B,n_srcs,F,T
-        # pred size : B,n_slots,F,T
-
+        
+        B,n_src,C,F,T,_ = gt.size()
+        
         
         pred,attention = self.forward(mixture,train=train) 
         
@@ -142,12 +145,12 @@ class AudioSlotModule(LightningModule):
         
         pred_idx = self._get_src_permutation_idx(indices)
         gt_idx = self._get_tgt_permutation_idx(indices)
-        
-        matching_pred = pred[pred_idx].view(B,n_src,F,T).type(torch.float32)
-        matching_gt = gt[gt_idx].view(B,n_src,F,T)
 
-        # print(f"torch.sum(matching_pred,dim=1) : {torch.sum(matching_pred,dim=1).size()}")
-        loss = self.criterion( matching_gt,matching_pred) +  self.recon_loss(mixture,torch.sum(matching_pred,dim=1))
+        matching_pred = pred[pred_idx].view(B,n_src,C,F,T,2).type(torch.float32)
+        matching_gt = gt[gt_idx].view(B,n_src,C,F,T,2)
+
+        
+        loss = self.criterion( matching_gt,matching_pred) +  self.recon_loss(torch.view_as_real(mixture),torch.sum(matching_pred,dim=1))
         outs = {"gt" : matching_gt, "pred" : matching_pred, "attention" : attention, "pred_index" : pred_idx, "gt_index" : gt_idx}
         
         return loss,outs,pred
@@ -173,15 +176,14 @@ class AudioSlotModule(LightningModule):
         
         if batch_idx == 0 and self.global_rank == 0 and self.local_rank == 0:
             visualize_num = 8
-            gt_vis = outs["gt"][:visualize_num].clone().detach().cpu().numpy()
-            matching_pred_vis = outs["pred"][:visualize_num].clone().detach().cpu().numpy()
-            slots_vis = slots[:visualize_num].clone().detach().cpu().numpy()
-            attention_vis = outs["attention"][:visualize_num].clone().detach().cpu().numpy()
+            gt_vis = outs["gt"][:visualize_num].clone().detach().cpu()
+            matching_pred_vis = outs["pred"][:visualize_num].clone().detach().cpu()
+            
             
             os.makedirs(os.path.join(self.logger.save_dir,str(self.current_epoch+1)),exist_ok=True)
             
             vis_compare(gt_vis,matching_pred_vis,self.logger.save_dir,str(self.current_epoch+1),outs["gt_index"],outs["pred_index"])
-            vis_slots(slots_vis,self.logger.save_dir,str(self.current_epoch+1))
+            
             # vis_attention(attention_vis,self.logger.save_dir,str(self.current_epoch+1))
                 
         return {"loss": loss}

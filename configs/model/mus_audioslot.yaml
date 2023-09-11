@@ -1,4 +1,5 @@
 _target_: src.models.musdb_module.AudioSlotModule
+cac : True
 
 name: "audio_slot"
 
@@ -24,6 +25,7 @@ net:
   num_slots : 4
   num_iterations : 2
   num_attn_heads : 1
+  hid_dim : 2048
   slot_dim : 512
   mlp_hid_dim : 1024
   eps : 1e-8

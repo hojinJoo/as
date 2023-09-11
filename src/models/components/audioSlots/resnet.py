@@ -100,14 +100,13 @@ class ResNet(nn.Module):
         # Stages
         self.stages = nn.ModuleList()
         in_channels = width
-        print(f"self botle neck : {self.bottle_neck}")
         for i, stage_size in enumerate(self.stage_sizes):
             if i == 0:
                 first_block_stride  = (1,1)
             else : 
                 first_block_stride  = (2,2)
             if self.bottle_neck:
-                stage = self._make_stage(in_channels, width * 4 * 2**i, stage_size, first_block_stride)
+                stage = self._make_stage(in_channels, width  * 2**i, stage_size, first_block_stride)
                 in_channels = width * 4 * 2**i
             else : 
                 stage = self._make_stage(in_channels, width * 2**i, stage_size, first_block_stride)
@@ -117,19 +116,18 @@ class ResNet(nn.Module):
 
     def forward(self, x):
         x = self.conv1(x)
-        print(f"resnet ln 114 size : {x.size()}")
         x = self.norm1(x)
         
-        print(f"resnet ln 116 size : {x.size()}")
         for i,stage in enumerate(self.stages):
-            print(f"stage : {stage}")
             stage= stage.to(x.device)
             x = stage(x)
-            print(f"{i} size : {x.size()}")
         return x
  
     def _make_stage(self, in_channels, out_channels, num_blocks, first_block_stride):
-        blocks = [self.block_cls(in_channels if i==0 else out_channels ,out_channels, self.norm, strides= first_block_stride if  i == 0 else (1, 1)) for i in range(num_blocks)]
+        if self.bottle_neck :
+            blocks = [self.block_cls(in_channels if i==0 else out_channels * 4 ,out_channels, self.norm, strides= first_block_stride if  i == 0 else (1, 1)) for i in range(num_blocks)]
+        else :
+            blocks = [self.block_cls(in_channels if i==0 else out_channels  ,out_channels, self.norm, strides= first_block_stride if  i == 0 else (1, 1)) for i in range(num_blocks)]
         # print(f"blocks : {blocks}")
         return nn.Sequential(*blocks)
 

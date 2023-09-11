@@ -12,9 +12,11 @@ def vis_compare(matching_gt, matching_pred,log_dir,epoch,gt_idx,pred_idx):
     `pred`: (B, 4,F,T)
     gt_idx : tuple(0,1)
     """
-    B, n_src, F, T = matching_gt.shape
-    _,n_slots,_,_ = matching_pred.shape
-    
+    B, n_src,C, F, T,_ = matching_gt.shape
+    _,n_slots,_,_,_,_ = matching_pred.shape
+    matching_gt = torch.mean(torch.abs(torch.view_as_complex(matching_gt)),dim=2)
+
+    matching_pred = torch.mean(torch.abs(torch.view_as_complex(matching_pred)),dim=2)
     
     fig, axes = plt.subplots(B, 2 * n_src, figsize=(12, 3*B))
     matching_pred[matching_pred < 0] =0
