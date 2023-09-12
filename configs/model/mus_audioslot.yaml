@@ -1,5 +1,5 @@
 _target_: src.models.musdb_module.AudioSlotModule
-cac : False
+cac : True
 
 name: "audio_slot"
 
@@ -13,11 +13,11 @@ scheduler:
   scheduler: 
     _target_: src.utils.schedular.CosineAnnealingWarmUpRestarts
     _partial_: true
-    T_0 : 1000
+    T_0 : 300
     T_mult : 1
-    T_up : 500
+    T_up : 100
     gamma : 0.8
-    eta_max : 0.0001
+    eta_max : 2e-4
   
 
 net:
@@ -25,16 +25,16 @@ net:
   num_slots : 4
   num_iterations : 2
   num_attn_heads : 1
-  hid_dim : 512
+  hid_dim : 2048
   slot_dim : 512
   mlp_hid_dim : 1024
   eps : 1e-8
   num_fourier_bases : 32
-  input_ft :  [2049,45] # after resnet : 33 1
+  input_ft :  [2049,44] # after resnet : 33 1
   dec_mlp_hid_dim : 256
-  cac : False
+  cac : True
   channels : 2
-  resnet : "34"
+  resnet : "101"
 
 istft : 
   n_fft : 4096

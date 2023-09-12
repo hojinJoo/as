@@ -21,14 +21,15 @@ tags: ["audio_slot", "musdb18"]
 seed: 12345
 
 trainer:
-  min_epochs: 500
-  max_epochs: 1000
+  min_epochs: 100
+  max_epochs: 300
   gradient_clip_val: 0.5
 
 train : True
+test : False
 
 data:
-  batch_size: 5
+  batch_size: 2
 
 logger:
   wandb:
@@ -41,4 +42,4 @@ hydra :
       file:
         filename: ${paths.output_dir}/${hydra.job.name}.log
 
-# ckpt_path : /workspace/as/epoch=011_train_loss=0.00001580.ckpt
+# ckpt_path : /workspace/as/logs/train/runs/musdb_audio_slot/s36_resnet101_cac/checkpoints/epoch=076_train_loss=0.00001572.ckpt

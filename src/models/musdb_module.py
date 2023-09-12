@@ -15,6 +15,7 @@ from src.utils.audio_vis import vis_compare,vis_slots,vis_attention,test_vis
 from src.utils.schedular import CosineAnnealingWarmUpRestarts
 from src.utils.transforms import istft
 from src.utils.write_wav import write_wav
+import museval
 
 class AudioSlotModule(LightningModule):
     """Example of LightningModule for MNIST classification.
@@ -252,19 +253,27 @@ class AudioSlotModule(LightningModule):
         accompanient = torch.sum(torch.stack([sample[source] for source in self.sources if source != 'vocals'], dim=1),dim=1) # [C,F,T]
         vocal = sample['vocals'] # [B,C,F,T]
         
-        mask = self.ibm_mask(prediction)
+        mask = self.ibm_mask(prediction).to(vocal.device)
   
-        model_input = torch.view_as_real(vocal + accompanient).cpu()
+        model_input = torch.view_as_real(vocal + accompanient)
         prediction =  model_input * mask
+        del model_input
         # update and log metrics
-        prediction = istft(torch.view_as_complex(prediction),fs=self.hparams.istft.sample_rate,window_length=self.hparams.istft.win_length,nfft=self.hparams.istft.n_fft,hop_length=self.hparams.istft.hop_length,original_length=batch['original_length'])
+        prediction = istft(torch.view_as_complex(prediction[...,:int(T/2),:].cpu()),nfft=self.hparams.istft.n_fft,hop_length=self.hparams.istft.hop_length,original_length=batch['original_length'])
 
-        gt = torch.stack((vocal,accompanient),dim=1).cpu() # [1,2,F,T]
-        gt = istft(gt,fs=self.hparams.istft.sample_rate,window_length=self.hparams.istft.win_length,nfft=self.hparams.istft.n_fft,hop_length=self.hparams.istft.hop_length,original_length=batch['original_length']) # [1,2,T]
+        gt = torch.stack((vocal,accompanient),dim=1) # [1,2,F,T]
+        gt = istft(gt[...,:int(T/2)].cpu(),nfft=self.hparams.istft.n_fft,hop_length=self.hparams.istft.hop_length,original_length=batch['original_length']) # [1,2,T]
         
+        del sample
         os.makedirs(os.path.join(self.logger.save_dir,'test'),exist_ok=True)
+        
+        
+        (sdr,isr,sir,sar) = museval.evaluate(gt.permute(0,1,3,2).squeeze(0),prediction.permute(0,1,3,2).squeeze(0))
+        print(f"sdr : {np.mean(sdr)}")
+        
         if self.global_rank == 0 and self.local_rank == 0 and batch_idx % 100 == 0:
-            write_wav(prediction.clone().detach().cpu(),os.path.join(self.logger.save_dir,'test'),batch["name"][0],self.hparams.istft.sample_rate)
+            
+            write_wav(prediction,os.path.join(self.logger.save_dir,'test'),batch["name"][0],self.hparams.istft.sample_rate)
             
         
 
@@ -314,7 +323,8 @@ class AudioSlotModule(LightningModule):
         accompanient = torch.sum(torch.stack([sample[source] for source in self.sources if source != 'vocals'], dim=1),dim=1) # [C,F,T]
         vocal = sample['vocals'] # [B,C,F,T]
         mask = self.ibm_mask(prediction).to(vocal.device)
-    
+        del sample
+        
         model_input = (vocal + accompanient)
         prediction =  model_input * mask
         # update and log metrics
@@ -346,21 +356,22 @@ class AudioSlotModule(LightningModule):
         # batch : [1,F,T]
         # print(batch["mixture"].size())
         # print(f"source {batch['source_1'].size()}")
-
-        if self.cac :
-            return self.val_cac(batch,batch_idx)
-        else :
-            return self.val_base(batch,batch_idx)
+        return
+        # if self.cac :
+        #     return self.val_cac(batch,batch_idx)
+        # else :
+        #     return self.val_base(batch,batch_idx)
 
     def validation_epoch_end(self, outputs: List[Any]):
-        snr = self.val_snr.get_results()
-        self.val_snr.reset()
+        return
+        # snr = self.val_snr.get_results()
+        # self.val_snr.reset()
         
-        self.val_snr_best(snr)
-        self.log("val/snr", snr, on_step=False, on_epoch=True, prog_bar=True,sync_dist=True)
-        self.log("val/snr_best", self.val_snr_best.compute(), on_step=False, on_epoch=True, prog_bar=True,sync_dist=True)
+        # self.val_snr_best(snr)
+        # self.log("val/snr", snr, on_step=False, on_epoch=True, prog_bar=True,sync_dist=True)
+        # self.log("val/snr_best", self.val_snr_best.compute(), on_step=False, on_epoch=True, prog_bar=True,sync_dist=True)
         
-        
+        # 여기까지
         # log `val_acc_best` as a value through `.compute()` method, instead of as a metric object
         # otherwise metric would be reset by lightning after each epoch
 
@@ -376,10 +387,10 @@ class AudioSlotModule(LightningModule):
     def test_step(self, batch: Any, batch_idx: int):
         # train과 다르게 [B,T,F] 형태로 들어옴
         # for 
-        # self.validation_step(batch, batch_idx)
+        self.validation_step(batch, batch_idx)
         return
-    # def test_epoch_end(self, outputs: List[Any]):
-        # self.validation_epoch_end(outputs)
+    def test_epoch_end(self, outputs: List[Any]):
+        self.validation_epoch_end(outputs)
 
     def configure_optimizers(self):
         """Choose what optimizers and learning-rate schedulers to use in your optimization.
