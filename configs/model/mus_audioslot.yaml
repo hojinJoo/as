@@ -1,5 +1,5 @@
 _target_: src.models.musdb_module.AudioSlotModule
-cac : True
+cac : False
 
 name: "audio_slot"
 
@@ -25,14 +25,21 @@ net:
   num_slots : 4
   num_iterations : 2
   num_attn_heads : 1
-  hid_dim : 2048
+  hid_dim : 512
   slot_dim : 512
   mlp_hid_dim : 1024
   eps : 1e-8
   num_fourier_bases : 32
   input_ft :  [2049,45] # after resnet : 33 1
   dec_mlp_hid_dim : 256
-  cac : True
+  cac : False
   channels : 2
-  resnet : "101"
+  resnet : "34"
+
+istft : 
+  n_fft : 4096
+  hop_length : 1024
+  win_length : 1024
+  sample_rate : 44100
+
 

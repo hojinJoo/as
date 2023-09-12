@@ -117,9 +117,10 @@ class MusDBDataModule(LightningDataModule):
             n_fft=self.n_fft,
             win_length=self.win_length,
             hop_length=self.hop_length,
-            mode="val",
+            mode="test",
             cac= self.cac
         )
+        
         
         
 
@@ -139,7 +140,7 @@ class MusDBDataModule(LightningDataModule):
             batch_size=1,
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
-            shuffle=True,
+            shuffle=False,
             persistent_workers=True
 
         )

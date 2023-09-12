@@ -13,6 +13,8 @@ from pytorch_lightning.utilities import rank_zero_only
 from utils.evaluator import SISNREvaluator
 from src.utils.audio_vis import vis_compare,vis_slots,vis_attention,test_vis
 from src.utils.schedular import CosineAnnealingWarmUpRestarts
+from src.utils.transforms import istft
+from src.utils.write_wav import write_wav
 
 class AudioSlotModule(LightningModule):
     """Example of LightningModule for MNIST classification.
@@ -36,7 +38,8 @@ class AudioSlotModule(LightningModule):
         scheduler: torch.optim.lr_scheduler,
         name: str = "musdb",
         sources : List[str] = ["vocals", "drums", "bass", "other"],
-        cac : bool = False
+        cac : bool = False,
+        istft : Any = None
         
     ):
         super().__init__()
@@ -68,9 +71,16 @@ class AudioSlotModule(LightningModule):
     def matcher(self, gt: torch.Tensor, pred: torch.Tensor):
         # pred: B,2,F,T
         # gt: B,2,F,T
-        B,n_gt,C,F,T,_ = gt.size()
-        # print(f"gt size : {gt.size()}")
-        _, n_slots, _, _,_,_ = pred.size()
+        if self.cac :
+            B,n_gt,C,F,T,_ = gt.size()
+            # print(f"gt size : {gt.size()}")
+            _, n_slots, _, _,_,_ = pred.size()
+        else : 
+            B,n_gt,C,F,T = gt.size()
+            # print(f"gt size : {gt.size()}")
+            _, n_slots, _, _,_ = pred.size()
+        # print(f"pred size : {pred.size()}")
+        # print(f"gt size  : {gt.size()}")
         # print(f"pred size : {pred.size()}")
         idx = []    
         for i in range(B):
@@ -131,26 +141,30 @@ class AudioSlotModule(LightningModule):
         if self.cac : 
             
             gt = torch.view_as_real(gt)
-            
+            B,n_src,C,F,T,_ = gt.size()
+        else :
+            gt = torch.abs(gt)
+            B,n_src,C,F,T = gt.size()
         
         mixture = accompanient + vocal        
         
         
-        B,n_src,C,F,T,_ = gt.size()
         
         
         pred,attention = self.forward(mixture,train=train) 
-        
         indices = self.matcher(gt, pred)
         
         pred_idx = self._get_src_permutation_idx(indices)
         gt_idx = self._get_tgt_permutation_idx(indices)
-
-        matching_pred = pred[pred_idx].view(B,n_src,C,F,T,2).type(torch.float32)
-        matching_gt = gt[gt_idx].view(B,n_src,C,F,T,2)
-
+        if self.cac :
+            matching_pred = pred[pred_idx].view(B,n_src,C,F,T,2).type(torch.float32)
+            matching_gt = gt[gt_idx].view(B,n_src,C,F,T,2)
+            loss = self.criterion( matching_gt,matching_pred) +  self.recon_loss(torch.view_as_real(mixture),torch.sum(matching_pred,dim=1))
+        else :
+            matching_pred = pred[pred_idx].view(B,n_src,C,F,T).type(torch.float32)
+            matching_gt = gt[gt_idx].view(B,n_src,C,F,T)
+            loss = self.criterion( matching_gt,matching_pred) +  self.recon_loss(torch.abs(mixture),torch.sum(matching_pred,dim=1))
         
-        loss = self.criterion( matching_gt,matching_pred) +  self.recon_loss(torch.view_as_real(mixture),torch.sum(matching_pred,dim=1))
         outs = {"gt" : matching_gt, "pred" : matching_pred, "attention" : attention, "pred_index" : pred_idx, "gt_index" : gt_idx}
         
         return loss,outs,pred
@@ -182,7 +196,7 @@ class AudioSlotModule(LightningModule):
             
             os.makedirs(os.path.join(self.logger.save_dir,str(self.current_epoch+1)),exist_ok=True)
             
-            vis_compare(gt_vis,matching_pred_vis,self.logger.save_dir,str(self.current_epoch+1),outs["gt_index"],outs["pred_index"])
+            vis_compare(gt_vis,matching_pred_vis,self.logger.save_dir,str(self.current_epoch+1),outs["gt_index"],outs["pred_index"],self.cac)
             
             # vis_attention(attention_vis,self.logger.save_dir,str(self.current_epoch+1))
                 
@@ -201,75 +215,150 @@ class AudioSlotModule(LightningModule):
         pass
             
         
+    def val_cac(self,batch,batch_idx) :
+        B,C,Fr,T = batch["vocals"].size() # 1 C Fr T
+        sample = {k : batch[k] for k in self.sources}
+        n_src = 2
+        segment_step = self.hparams.net.input_ft[1]
+        prediction = torch.zeros(1,n_src,C,Fr,T,2)
+        loss = 0
+        for segment in range(0,T,segment_step):
+            model_input = {}
+            for key, value in sample.items():
+                model_input[key] = value[:,:,:,segment:segment+segment_step]
+
+            inputs_original = model_input['vocals'].size()
+            if inputs_original[3] != segment_step :
+                # print("mixture size",mixture.size())
+                # print(f"segment {segment_step}")
+                for key, value in model_input.items():
+                    model_input[key] = torch.cat((value,torch.zeros(value.size(0),value.size(1),value.size(2),segment_step-value.size(3)).to(value.device)),dim=-1)
+                    
+            
+            loss,outs,slots = self.model_step(model_input,train=False)
+            loss += loss
+            pred_idx = outs["pred_index"]
+            gt_idx = outs["gt_index"]
+            
+            sorted_gt_idx,sorted_pred_idx = self.find_pred_idx_original_gt(gt_idx, pred_idx)
+            sorted_matching_pred = slots[sorted_pred_idx].unsqueeze(0) # 1,n_src,C,Fr,T,2
+            
+        
+            if inputs_original[3] != segment_step :
+                prediction[:,:,:,:,segment:,:] = sorted_matching_pred[:,:,:,:,:inputs_original[3],:]
+            else :
+                prediction[:,:,:,:,segment:segment+segment_step,:] = sorted_matching_pred
+
+        accompanient = torch.sum(torch.stack([sample[source] for source in self.sources if source != 'vocals'], dim=1),dim=1) # [C,F,T]
+        vocal = sample['vocals'] # [B,C,F,T]
+        
+        mask = self.ibm_mask(prediction)
+  
+        model_input = torch.view_as_real(vocal + accompanient).cpu()
+        prediction =  model_input * mask
+        # update and log metrics
+        prediction = istft(torch.view_as_complex(prediction),fs=self.hparams.istft.sample_rate,window_length=self.hparams.istft.win_length,nfft=self.hparams.istft.n_fft,hop_length=self.hparams.istft.hop_length,original_length=batch['original_length'])
+
+        gt = torch.stack((vocal,accompanient),dim=1).cpu() # [1,2,F,T]
+        gt = istft(gt,fs=self.hparams.istft.sample_rate,window_length=self.hparams.istft.win_length,nfft=self.hparams.istft.n_fft,hop_length=self.hparams.istft.hop_length,original_length=batch['original_length']) # [1,2,T]
+        
+        os.makedirs(os.path.join(self.logger.save_dir,'test'),exist_ok=True)
+        if self.global_rank == 0 and self.local_rank == 0 and batch_idx % 100 == 0:
+            write_wav(prediction.clone().detach().cpu(),os.path.join(self.logger.save_dir,'test'),batch["name"][0],self.hparams.istft.sample_rate)
+            
+        
+
+        self.val_loss(loss)
+        self.log("val/loss", self.val_loss, on_step=False, on_epoch=True, prog_bar=True)
+
+        snr = self.val_snr.evaluate(prediction,gt)
+        # self.log("val/acc", self.val_acc, on_step=False, on_epoch=True, prog_bar=True)
+
+        self.log("val/snr", snr, on_step=True, on_epoch=True, prog_bar=True,sync_dist=True)
+        return {"loss": loss}
+    
+    def val_base(self,batch,batch_idx) :
+        B,C,Fr,T = batch["vocals"].size() # 1 C Fr T
+        sample = {k : batch[k] for k in self.sources}
+        n_src = 2
+        segment_step = self.hparams.net.input_ft[1]
+        prediction = torch.zeros(1,n_src,C,Fr,T)
+        loss = 0
+        for segment in range(0,T,segment_step):
+            model_input = {}
+            for key, value in sample.items():
+                model_input[key] = value[:,:,:,segment:segment+segment_step]
+
+            inputs_original = model_input['vocals'].size()
+            if inputs_original[3] != segment_step :
+                # print("mixture size",mixture.size())
+                # print(f"segment {segment_step}")
+                for key, value in model_input.items():
+                    model_input[key] = torch.cat((value,torch.zeros(value.size(0),value.size(1),value.size(2),segment_step-value.size(3)).to(value.device)),dim=-1)
+                    
+            
+            loss,outs,slots = self.model_step(model_input,train=False)
+            loss += loss
+            pred_idx = outs["pred_index"]
+            gt_idx = outs["gt_index"]
+            
+            sorted_gt_idx,sorted_pred_idx = self.find_pred_idx_original_gt(gt_idx, pred_idx)
+            sorted_matching_pred = slots[sorted_pred_idx].unsqueeze(0) # 1,n_src,C,Fr,T,2
+            
+        
+            if inputs_original[3] != segment_step :
+                prediction[:,:,:,:,segment:] = sorted_matching_pred[:,:,:,:,:inputs_original[3]]
+            else :
+                prediction[:,:,:,:,segment:segment+segment_step] = sorted_matching_pred
+
+        accompanient = torch.sum(torch.stack([sample[source] for source in self.sources if source != 'vocals'], dim=1),dim=1) # [C,F,T]
+        vocal = sample['vocals'] # [B,C,F,T]
+        mask = self.ibm_mask(prediction).to(vocal.device)
+    
+        model_input = (vocal + accompanient)
+        prediction =  model_input * mask
+        # update and log metrics
+        prediction = istft(prediction[...,:int(T/2)].cpu(),fs=self.hparams.istft.sample_rate,window_length=self.hparams.istft.win_length,nfft=self.hparams.istft.n_fft,hop_length=self.hparams.istft.hop_length,original_length=int(batch['original_length']/2))
+        gt = torch.stack((vocal,accompanient),dim=1) # [1,2,F,T]
+        gt = istft(gt[...,:int(T/2)].cpu(),fs=self.hparams.istft.sample_rate,window_length=self.hparams.istft.win_length,nfft=self.hparams.istft.n_fft,hop_length=self.hparams.istft.hop_length,original_length=int(batch['original_length']/2)) # [1,2,T]
+
+        
+        
+        os.makedirs(os.path.join(self.logger.save_dir,'test'),exist_ok=True)
+            
+        
+
+        self.val_loss(loss)
+        self.log("val/loss", self.val_loss, on_step=False, on_epoch=True, prog_bar=True)
+
+        snr = self.val_snr.evaluate(prediction,gt)
+        # self.log("val/acc", self.val_acc, on_step=False, on_epoch=True, prog_bar=True)
+        if self.global_rank != 0  :
+            del prediction
+            del gt
+            
+        self.log("val/snr", snr, on_step=True, on_epoch=True, prog_bar=True,sync_dist=True)
+        if self.global_rank == 0 and self.local_rank == 0 and batch_idx % 100 == 0:
+            write_wav(prediction,os.path.join(self.logger.save_dir,'test'),batch["name"][0],self.hparams.istft.sample_rate)
+        
+        return {"loss": loss}
     def validation_step(self, batch: Any, batch_idx: int):
         # batch : [1,F,T]
         # print(batch["mixture"].size())
         # print(f"source {batch['source_1'].size()}")
-        pass
-    #     _,_,F,T = batch["mixture"].size()
-    #     n_src = 2
-    #     segment_step = self.hparams.net.input_ft[1]
-    #     prediction = torch.zeros(1,n_src,F,T)
-    #     loss = 0
-    #     for segment in range(0,T,segment_step):
-    #         source1 = batch["source_1"].squeeze(0)[:,:,segment:segment+segment_step]
-    #         source2 = batch["source_2"].squeeze(0)[:,:,segment:segment+segment_step]
-    #         mixture = source1 + source2
-    #         mixture_original_size = mixture.size()
-    #         if mixture_original_size[2] != segment_step :
-    #             # print("mixture size",mixture.size())
-    #             # print(f"segment {segment_step}")
-    #             source1 = torch.cat((source1,torch.zeros(source1.size(0),source1.size(1),segment_step-source1.size(2)).to(source1.device) ),dim=2)
-    #             source2 = torch.cat((source2,torch.zeros(source2.size(0),source2.size(1),segment_step-source2.size(2)).to(source2.device)),dim=2)
-    #             mixture = torch.cat((mixture,torch.zeros(mixture.size(0),mixture.size(1),segment_step-mixture.size(2)).to(mixture.device)),dim=2)
-            
-    #         loss,outs,slots = self.model_step({"mixture" : mixture, "source_1" : source1, "source_2" : source2},train=False)
-    #         loss += loss
-    #         pred_idx = outs["pred_index"]
-    #         gt_idx = outs["gt_index"]
-            
-    #         sorted_gt_idx,sorted_pred_idx = self.find_pred_idx_original_gt(gt_idx, pred_idx)
-    #         sorted_matching_pred = slots[sorted_pred_idx].unsqueeze(0)
-            
-    #         if mixture_original_size[2] != segment_step :
-    #             prediction[:,:,:,segment:] = sorted_matching_pred[:,:,:,:mixture_original_size[2]]
-    #         else :
-    #             prediction[:,:,:,segment:segment+segment_step] = sorted_matching_pred
 
-    #     gt = torch.stack((batch["source_1"].squeeze(0),batch["source_2"].squeeze(0)),dim=1).cpu()
-    #     prediction = torch.pow(prediction,10/3)
-    #     mask = self.ibm_mask(prediction)
-        
-  
-    #     model_input = (batch['source_1'] + batch['source_2']).squeeze(0).cpu()
-        
-    #     prediction =  model_input * prediction
-    #     # update and log metrics
-    #     gt_vis = gt.clone().detach().squeeze(0).cpu().numpy()
-    #     matching_pred_vis = prediction.clone().detach().squeeze(0).cpu().numpy()
-        
-    #     os.makedirs(os.path.join(self.logger.save_dir,'test'),exist_ok=True)
-    #     test_vis(gt_vis,matching_pred_vis,self.logger.save_dir,'test',str(batch_idx))
-            
-        
+        if self.cac :
+            return self.val_cac(batch,batch_idx)
+        else :
+            return self.val_base(batch,batch_idx)
 
-    #     self.val_loss(loss)
-    #     self.log("val/loss", self.val_loss, on_step=False, on_epoch=True, prog_bar=True)
-
-    #     snr = self.val_snr.evaluate(prediction,gt)
-    #     # self.log("val/acc", self.val_acc, on_step=False, on_epoch=True, prog_bar=True)
-
-    #     self.log("val/snr", snr, on_step=True, on_epoch=True, prog_bar=True,sync_dist=True)
-    #     self.log("val/snr_best", self.val_snr_best.compute(), on_step=False, on_epoch=True, prog_bar=True,sync_dist=True)
-    #     return {"loss": loss}
-
-    # def validation_epoch_end(self, outputs: List[Any]):
-    #     snr = self.val_snr.get_results()
-    #     self.val_snr.reset()
+    def validation_epoch_end(self, outputs: List[Any]):
+        snr = self.val_snr.get_results()
+        self.val_snr.reset()
         
-    #     self.val_snr_best(snr)
-    #     self.log("val/snr", snr, on_step=False, on_epoch=True, prog_bar=True,sync_dist=True)
-    #     self.log("val/snr_best", self.val_snr_best.compute(), on_step=False, on_epoch=True, prog_bar=True,sync_dist=True)
+        self.val_snr_best(snr)
+        self.log("val/snr", snr, on_step=False, on_epoch=True, prog_bar=True,sync_dist=True)
+        self.log("val/snr_best", self.val_snr_best.compute(), on_step=False, on_epoch=True, prog_bar=True,sync_dist=True)
         
         
         # log `val_acc_best` as a value through `.compute()` method, instead of as a metric object

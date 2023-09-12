@@ -44,7 +44,6 @@ class AudioSlot(nn.Module) :
         
         self.backbone = self.backbone.to(x.device)
         x = self.backbone(x)
-        
         B,C,F,T = x.size()
         
         x = x.permute(0,2,3,1)

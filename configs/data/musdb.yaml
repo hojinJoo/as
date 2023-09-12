@@ -3,9 +3,9 @@ name: "musdb"
 metadata_path : /media/ssd1/users/hj/musdb18hq/musdb_wav.json
 segment : 1
 sample_rate : 44100
-num_workers: 12
+num_workers: 8
 n_fft : 4096
 win_length : 1024
 hop_length : 1024
-cac : True
+cac : False
 

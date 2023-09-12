@@ -7,8 +7,8 @@ defaults:
   - override /data: musdb.yaml
   - override /model: mus_audioslot.yaml
   - override /callbacks: audioslot.yaml
-  # - override /trainer: ddp_spawn.yaml
-  - override /trainer: test.yaml
+  - override /trainer: ddp_spawn.yaml
+  # - override /trainer: test.yaml
 
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
@@ -28,7 +28,7 @@ trainer:
 train : True
 
 data:
-  batch_size: 1
+  batch_size: 5
 
 logger:
   wandb:
@@ -41,3 +41,4 @@ hydra :
       file:
         filename: ${paths.output_dir}/${hydra.job.name}.log
 
+# ckpt_path : /workspace/as/epoch=011_train_loss=0.00001580.ckpt

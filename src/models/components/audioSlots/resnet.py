@@ -137,9 +137,9 @@ def get_backbone(resnet,cac=False,channles=2) :
     if resnet =="34" :
         return ResNet(block_cls=ResNetBlock, stage_sizes=[3, 4, 6, 3],cac=cac)
     elif resnet =="50" :
-        return ResNet(block_cls=BottleNeckResNetBlock, stage_sizes=[3, 4, 6, 3],cac=True)
+        return ResNet(block_cls=BottleNeckResNetBlock, stage_sizes=[3, 4, 6, 3],cac=cac)
     elif resnet =="101" :
-        return ResNet(block_cls=BottleNeckResNetBlock, stage_sizes=[3, 4, 23, 3],cac=True)
+        return ResNet(block_cls=BottleNeckResNetBlock, stage_sizes=[3, 4, 23, 3],cac=cac)
     else : 
         raise ValueError(f"Invalid resnet: {resnet}")
 
