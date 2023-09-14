@@ -117,7 +117,7 @@ class MusDBDataModule(LightningDataModule):
             n_fft=self.n_fft,
             win_length=self.win_length,
             hop_length=self.hop_length,
-            mode="train",
+            mode="test",
             cac= self.cac
         )
         

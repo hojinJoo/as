@@ -30,6 +30,59 @@ class SISNREvaluator :
         self.SI_SNR = [i.cpu() for i in self.SI_SNR]
         return np.mean(self.SI_SNR) if self.SI_SNR != [] else 0
         
+class SDREvaluator :
+    def __init__(self) :
+        self.vocal_SDR = []
+        self.accom_SDR = []
+        self.total_SDR = []
+   
+    def get_sdr(self,references, estimates):
+        """ 
+        Compute the SDR according to the MDX challenge definition.
+        Adapted from AIcrowd/music-demixing-challenge-starter-kit (MIT license)
+        """
+        references = references[None].transpose(1,2).double()
+        estimates = estimates[None].transpose(1,2).double()
+        assert references.dim() == 4
+        assert estimates.dim() == 4
+        delta = 1e-7  # avoid numerical errors
+        num = torch.sum(torch.square(references), dim=(2, 3))
+        den = torch.sum(torch.square(references - estimates), dim=(2, 3))
+        num += delta
+        den += delta
+        scores = 10 * torch.log10(num / den)
+        return scores[0]
+    
+    def evaluate(self,pred,gt) :
+        """_summary_
+
+        Arguments:
+            pred -- (B,2,F,T)
+            gt -- (B,2,F,T)
+
+        Returns:
+            (SI_SNR)
+        """
+        snr = self.get_sdr(gt,pred)
+        self.vocal_SDR.append(snr[0])
+        self.accom_SDR.append(snr[1])
+        self.total_SDR.append(torch.mean(snr))
+        
+        return snr
+    def reset(self) :
+        self.vocal_SDR = []
+        self.accom_SDR = []
+        self.total_SDR = []
+    
+    def get_results(self) :
+        self.vocal_SDR = [i.cpu() for i in self.vocal_SDR]
+        self.accom_SDR = [i.cpu() for i in self.accom_SDR]
+        self.total_SDR = [i.cpu() for i in self.total_SDR]
+        ret = { "vocal" : np.mean(self.vocal_SDR) if self.vocal_SDR != [] else 0,
+                "accom" : np.mean(self.accom_SDR) if self.accom_SDR != [] else 0,
+                "total" : np.mean(self.total_SDR) if self.total_SDR != [] else 0}
+        print(ret)
+        return ret
         
 
 

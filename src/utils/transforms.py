@@ -17,5 +17,5 @@ def torch_stft(wav,nfft,hop_length) :
     return torch.stft(wav,n_fft=nfft,hop_length=hop_length,return_complex=True,window=window,onesided=True,normalized=True)
 
 def torch_isfft(wav,nfft,hop_length,original_length) :
-    window = torch.hann_window(nfft)
+    window = torch.hann_window(nfft).to(wav.device)
     return torch.istft(wav,n_fft=nfft,hop_length=hop_length,window=window,length=original_length,onesided=True,return_complex=False,normalized=True)

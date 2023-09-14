@@ -7,5 +7,5 @@ num_workers: 8
 n_fft : 4096
 win_length : 1024
 hop_length : 1024
-cac : True
+cac : False
 

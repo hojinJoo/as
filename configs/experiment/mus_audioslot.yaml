@@ -7,8 +7,8 @@ defaults:
   - override /data: musdb.yaml
   - override /model: mus_audioslot.yaml
   - override /callbacks: audioslot.yaml
-  - override /trainer: ddp_spawn.yaml
-  # - override /trainer: test.yaml
+  # - override /trainer: ddp_spawn.yaml
+  - override /trainer: test.yaml
 
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
@@ -25,11 +25,11 @@ trainer:
   max_epochs: 300
   gradient_clip_val: 0.5
 
-train : True
-test : False
+train : False
+test : True
 
 data:
-  batch_size: 2
+  batch_size: 8
 
 logger:
   wandb:
@@ -42,4 +42,4 @@ hydra :
       file:
         filename: ${paths.output_dir}/${hydra.job.name}.log
 
-# ckpt_path : /workspace/as/logs/train/runs/musdb_audio_slot/s36_resnet101_cac/checkpoints/epoch=076_train_loss=0.00001572.ckpt
+ckpt_path : /workspace/as/noCACFinal.ckpt

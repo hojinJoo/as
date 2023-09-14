@@ -10,12 +10,13 @@ import os
 import wandb
 from pytorch_lightning.utilities import rank_zero_only
 
-from utils.evaluator import SISNREvaluator
+from utils.evaluator import SDREvaluator
 from src.utils.audio_vis import vis_compare,vis_slots,vis_attention,test_vis
 from src.utils.schedular import CosineAnnealingWarmUpRestarts
-from src.utils.transforms import istft
+from src.utils.transforms import torch_isfft as istft
 from src.utils.write_wav import write_wav
 import museval
+from openunmix.filtering import wiener
 
 class AudioSlotModule(LightningModule):
     """Example of LightningModule for MNIST classification.
@@ -56,8 +57,9 @@ class AudioSlotModule(LightningModule):
         self.recon_loss = torch.nn.MSELoss()
         
         # metric objects for calculating and averaging accuracy across batches
-        self.train_snr = SISNREvaluator()
-        self.val_snr = SISNREvaluator()
+        self.train_snr = SDREvaluator()
+        self.val_ibm_sdr = SDREvaluator()
+        self.val_wiener_sdr = SDREvaluator()
         
 
         # for averaging loss across batches
@@ -67,7 +69,8 @@ class AudioSlotModule(LightningModule):
         
         # for tracking best so far validation accuracy
         self.train_snr_best = MaxMetric()
-        self.val_snr_best = MaxMetric()
+        self.val_ibm_best = MaxMetric()
+        self.val_wiener_best = MaxMetric()
 
     def matcher(self, gt: torch.Tensor, pred: torch.Tensor):
         # pred: B,2,F,T
@@ -149,9 +152,7 @@ class AudioSlotModule(LightningModule):
         
         mixture = accompanient + vocal        
         
-        
-        
-        
+
         pred,attention = self.forward(mixture,train=train) 
         indices = self.matcher(gt, pred)
         
@@ -249,20 +250,19 @@ class AudioSlotModule(LightningModule):
                 prediction[:,:,:,:,segment:,:] = sorted_matching_pred[:,:,:,:,:inputs_original[3],:]
             else :
                 prediction[:,:,:,:,segment:segment+segment_step,:] = sorted_matching_pred
-
         accompanient = torch.sum(torch.stack([sample[source] for source in self.sources if source != 'vocals'], dim=1),dim=1) # [C,F,T]
         vocal = sample['vocals'] # [B,C,F,T]
         
         mask = self.ibm_mask(prediction).to(vocal.device)
-  
+
         model_input = torch.view_as_real(vocal + accompanient)
         prediction =  model_input * mask
         del model_input
         # update and log metrics
-        prediction = istft(torch.view_as_complex(prediction[...,:int(T/2),:].cpu()),nfft=self.hparams.istft.n_fft,hop_length=self.hparams.istft.hop_length,original_length=batch['original_length'])
+        prediction = istft(torch.view_as_complex(prediction.cpu()),nfft=self.hparams.istft.n_fft,hop_length=self.hparams.istft.hop_length,original_length=batch['original_length'])
 
         gt = torch.stack((vocal,accompanient),dim=1) # [1,2,F,T]
-        gt = istft(gt[...,:int(T/2)].cpu(),nfft=self.hparams.istft.n_fft,hop_length=self.hparams.istft.hop_length,original_length=batch['original_length']) # [1,2,T]
+        gt = istft(gt.cpu(),nfft=self.hparams.istft.n_fft,hop_length=self.hparams.istft.hop_length,original_length=batch['original_length']) # [1,2,T]
         
         del sample
         os.makedirs(os.path.join(self.logger.save_dir,'test'),exist_ok=True)
@@ -286,6 +286,13 @@ class AudioSlotModule(LightningModule):
         self.log("val/snr", snr, on_step=True, on_epoch=True, prog_bar=True,sync_dist=True)
         return {"loss": loss}
     
+    def do_istft(self,x,original_length) :
+        vocal = x[0]
+        accompanient = x[1]
+        vocal_wav = istft(vocal,nfft=self.hparams.istft.n_fft,hop_length=self.hparams.istft.hop_length,original_length=original_length)
+        accom_wav = istft(accompanient,nfft=self.hparams.istft.n_fft,hop_length=self.hparams.istft.hop_length,original_length=original_length)
+        return torch.stack((vocal_wav,accom_wav),dim=0)
+    
     def val_base(self,batch,batch_idx) :
         B,C,Fr,T = batch["vocals"].size() # 1 C Fr T
         sample = {k : batch[k] for k in self.sources}
@@ -296,7 +303,7 @@ class AudioSlotModule(LightningModule):
         for segment in range(0,T,segment_step):
             model_input = {}
             for key, value in sample.items():
-                model_input[key] = value[:,:,:,segment:segment+segment_step]
+                model_input[key] = torch.pow(value[:,:,:,segment:segment+segment_step],0.3)
 
             inputs_original = model_input['vocals'].size()
             if inputs_original[3] != segment_step :
@@ -320,61 +327,84 @@ class AudioSlotModule(LightningModule):
             else :
                 prediction[:,:,:,:,segment:segment+segment_step] = sorted_matching_pred
 
+        # [1,2,Fr,T]
         accompanient = torch.sum(torch.stack([sample[source] for source in self.sources if source != 'vocals'], dim=1),dim=1) # [C,F,T]
-        vocal = sample['vocals'] # [B,C,F,T]
-        mask = self.ibm_mask(prediction).to(vocal.device)
-        del sample
+        # [1,2,Fr,T]
+        vocal = sample['vocals'] 
+        # [1,2,2,Fr,T]
+         
+        prediction[prediction <= 0] = 0
+        prediction_pow = torch.pow(prediction,10/3)
         
-        model_input = (vocal + accompanient)
-        prediction =  model_input * mask
-        # update and log metrics
-        prediction = istft(prediction[...,:int(T/2)].cpu(),fs=self.hparams.istft.sample_rate,window_length=self.hparams.istft.win_length,nfft=self.hparams.istft.n_fft,hop_length=self.hparams.istft.hop_length,original_length=int(batch['original_length']/2))
-        gt = torch.stack((vocal,accompanient),dim=1) # [1,2,F,T]
-        gt = istft(gt[...,:int(T/2)].cpu(),fs=self.hparams.istft.sample_rate,window_length=self.hparams.istft.win_length,nfft=self.hparams.istft.n_fft,hop_length=self.hparams.istft.hop_length,original_length=int(batch['original_length']/2)) # [1,2,T]
+        mask = self.ibm_mask(prediction_pow).to(vocal.device)
 
-        
-        
+
+        # 1,2,Fr,T
+        model_input = (vocal + accompanient)
+        prediction_ibm =  model_input * mask # 1,2,2,Fr,T
+        # update and log metrics
+        #[2,2,T]
+        ibm_wav = self.do_istft(prediction_ibm.squeeze(0),int(batch['original_length']))
+        gt = torch.stack((vocal,accompanient),dim=1) # [1,2,F,T]
+        # [2,2,T]
+        gt = self.do_istft(gt.squeeze(0),int(batch['original_length']))
+
         os.makedirs(os.path.join(self.logger.save_dir,'test'),exist_ok=True)
             
-        
+
 
         self.val_loss(loss)
         self.log("val/loss", self.val_loss, on_step=False, on_epoch=True, prog_bar=True)
 
-        snr = self.val_snr.evaluate(prediction,gt)
+        sdr_ibm = self.val_ibm_sdr.evaluate(ibm_wav,gt)
+
+        wiener_out = self.wiener_mask(prediction_pow.cpu(),model_input.cpu(),n_iters=3)
+        wiener_wav = self.do_istft(wiener_out.squeeze(0),int(batch['original_length']))
+        sdr_wiener = self.val_wiener_sdr.evaluate(wiener_wav,gt.cpu())
+        # print(f"sdr_wiener : {sdr_wiener}")
         # self.log("val/acc", self.val_acc, on_step=False, on_epoch=True, prog_bar=True)
         if self.global_rank != 0  :
             del prediction
             del gt
             
-        self.log("val/snr", snr, on_step=True, on_epoch=True, prog_bar=True,sync_dist=True)
         if self.global_rank == 0 and self.local_rank == 0 and batch_idx % 100 == 0:
-            write_wav(prediction,os.path.join(self.logger.save_dir,'test'),batch["name"][0],self.hparams.istft.sample_rate)
-        
+            
+            write_wav(ibm_wav,os.path.join(self.logger.save_dir,'test','ibm'),batch["name"][0],self.hparams.istft.sample_rate)
+            write_wav(wiener_wav,os.path.join(self.logger.save_dir,'test','wiener'),batch["name"][0],self.hparams.istft.sample_rate)
+        print(f"sdr_ibm : {sdr_ibm}\n sdr_wiener : {sdr_wiener}")
         return {"loss": loss}
+
     def validation_step(self, batch: Any, batch_idx: int):
         # batch : [1,F,T]
         # print(batch["mixture"].size())
         # print(f"source {batch['source_1'].size()}")
-        return
-        # if self.cac :
-        #     return self.val_cac(batch,batch_idx)
-        # else :
-        #     return self.val_base(batch,batch_idx)
-
+        # return
+        if self.cac :
+            return self.val_cac(batch,batch_idx)
+        else :
+            return self.val_base(batch,batch_idx)
+    
+    
     def validation_epoch_end(self, outputs: List[Any]):
-        return
-        # snr = self.val_snr.get_results()
-        # self.val_snr.reset()
+        sdr_ibm = self.val_ibm_sdr.get_results()
+        self.val_ibm_sdr.reset()
+        sdr_wiener = self.val_wiener_sdr.get_results()
+        self.val_wiener_sdr.reset()
         
-        # self.val_snr_best(snr)
-        # self.log("val/snr", snr, on_step=False, on_epoch=True, prog_bar=True,sync_dist=True)
-        # self.log("val/snr_best", self.val_snr_best.compute(), on_step=False, on_epoch=True, prog_bar=True,sync_dist=True)
+        self.log("val/sdr_ibm_vocal", sdr_ibm["vocal"], on_step=False, on_epoch=True, prog_bar=True,sync_dist=True)
+        self.log("val/sdr_ibm_accompanient", sdr_ibm["accom"], on_step=False, on_epoch=True, prog_bar=True,sync_dist=True)
+        self.log("val/sdr_ibm_total", sdr_ibm["total"], on_step=False, on_epoch=True, prog_bar=True,sync_dist=True)
+        
+        self.log("val/sdr_wiener_vocal", sdr_wiener["vocal"], on_step=False, on_epoch=True, prog_bar=True,sync_dist=True)
+        self.log("val/sdr_wiener_accompanient", sdr_wiener["accom"], on_step=False, on_epoch=True, prog_bar=True,sync_dist=True)
+        self.log("val/sdr_wiener_total", sdr_wiener["total"], on_step=False, on_epoch=True, prog_bar=True,sync_dist=True)
+        
         
         # 여기까지
         # log `val_acc_best` as a value through `.compute()` method, instead of as a metric object
         # otherwise metric would be reset by lightning after each epoch
 
+    
     
     def ibm_mask(self,sources) :
         # ideal binary mask
@@ -383,7 +413,33 @@ class AudioSlotModule(LightningModule):
         ibm = ibm / torch.sum(ibm, dim=1, keepdim=True)
         ibm[ ibm <= 0.5] = 0
         return ibm
+    
+    def wiener_mask(self,estimates,mix,n_iters) :
         
+        init = mix.dtype
+        win_len = 300
+        wiener_residual = True
+        B,S,C,Fr,T = estimates.size()
+        estimates = estimates.permute(0,4,3,2,1) # B,T,Fr,C,S
+        mix = torch.view_as_real(mix.permute(0,3,2,1)) # B,T,Fr,2 (complex)
+        
+        outs = []
+        for sample in range(B) :
+            pos = 0
+            out = []
+            for pos in range(0,T,win_len) :
+                frame = slice(pos,pos+win_len)
+                z_out = wiener(estimates[sample,frame],mix[sample,frame],n_iters,residual=wiener_residual)
+                
+                out.append(z_out.transpose(-1,-2))
+            outs.append(torch.cat(out,dim=0))
+
+        out = torch.view_as_complex(torch.stack(outs,dim=0))
+        out = out.permute(0,4,3,2,1).contiguous()
+        if wiener_residual :
+            out = out[:,:-1]
+        return out.to(init)
+    
     def test_step(self, batch: Any, batch_idx: int):
         # train과 다르게 [B,T,F] 형태로 들어옴
         # for 
