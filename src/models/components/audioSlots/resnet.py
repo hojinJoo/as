@@ -72,7 +72,7 @@ class BottleNeckResNetBlock(ResNetBlock):
 
 # ResNet model
 class ResNet(nn.Module):
-    def __init__(self,  block_cls, stage_sizes, norm_type="group",cac=False,channels=2):
+    def __init__(self,  block_cls, stage_sizes, norm_type="group",cac=False,channels=2,cluster = False):
         super(ResNet, self).__init__()
         self.block_cls = block_cls
         self.stage_sizes = stage_sizes
@@ -95,6 +95,8 @@ class ResNet(nn.Module):
             self.conv1 = nn.Conv2d(2 * channels ,64, kernel_size=3, stride=1, padding=1, bias=False)
         else : 
             self.conv1 = nn.Conv2d(channels ,64, kernel_size=3, stride=1, padding=1, bias=False)
+        
+        
         self.norm1 = self.norm(num_channels=64)
         
         # Stages

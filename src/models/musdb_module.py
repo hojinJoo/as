@@ -41,7 +41,8 @@ class AudioSlotModule(LightningModule):
         name: str = "musdb",
         sources : List[str] = ["vocals", "drums", "bass", "other"],
         cac : bool = False,
-        istft : Any = None
+        istft : Any = None,
+        is_train : bool = True
         
     ):
         super().__init__()
@@ -52,6 +53,7 @@ class AudioSlotModule(LightningModule):
         self.cac = cac
         self.net = net
         self.sources = sources
+        self.is_train = is_train
         # loss function
         self.criterion = torch.nn.MSELoss()
         self.recon_loss = torch.nn.MSELoss()
@@ -133,8 +135,8 @@ class AudioSlotModule(LightningModule):
         # by default lightning executes validation step sanity checks before training starts,
         # so it's worth to make sure validation metrics don't store results from these checks
         self.val_loss.reset()
-        self.val_snr.reset()
-        self.val_snr_best.reset()
+        # self.val_snr.reset()
+        # self.val_snr_best.reset()
 
     def model_step(self, batch: Any,train:bool=False):
         # C : 2
@@ -147,13 +149,16 @@ class AudioSlotModule(LightningModule):
             gt = torch.view_as_real(gt)
             B,n_src,C,F,T,_ = gt.size()
         else :
+            
+            gt = torch.pow(gt,0.3)
             gt = torch.abs(gt)
+
             B,n_src,C,F,T = gt.size()
         
         mixture = accompanient + vocal        
         
-
         pred,attention = self.forward(mixture,train=train) 
+
         indices = self.matcher(gt, pred)
         
         pred_idx = self._get_src_permutation_idx(indices)
@@ -379,6 +384,8 @@ class AudioSlotModule(LightningModule):
         # print(batch["mixture"].size())
         # print(f"source {batch['source_1'].size()}")
         # return
+        if self.is_train :
+            return
         if self.cac :
             return self.val_cac(batch,batch_idx)
         else :
@@ -386,6 +393,8 @@ class AudioSlotModule(LightningModule):
     
     
     def validation_epoch_end(self, outputs: List[Any]):
+        if self.is_train :
+            return
         sdr_ibm = self.val_ibm_sdr.get_results()
         self.val_ibm_sdr.reset()
         sdr_wiener = self.val_wiener_sdr.get_results()
